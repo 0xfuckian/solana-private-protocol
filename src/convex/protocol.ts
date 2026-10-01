@@ -10,6 +10,7 @@ import {
   requireUserId,
   routeFee,
 } from "./backendHelpers";
+import { isWalletWhitelisted } from "./whitelist";
 import { sha256Hex } from "./sha256";
 import {
   APPROVED_MAX_LOTS,
@@ -169,14 +170,9 @@ export const getMyWallet = query({
     const wallet = await getWalletForUser(ctx, userId);
     if (!wallet) return null;
     const state = await protocolStateOrDefault(ctx);
-    // Approved tier = the first 200 wallets — same rule the node enforces
-    // when an invoice is opened.
-    const faucetUsers = await ctx.db
-      .query("wallets")
-      .withIndex("by_creation", (q) => q.lt("createdAt", 9e15))
-      .order("asc")
-      .take(200);
-    const approved = faucetUsers.some((w) => w._id === wallet._id);
+    // Approved tier = cleared by the pre-launch whitelist (founder-reviewed),
+    // matched by wallet address or by the submitting account.
+    const approved = await isWalletWhitelisted(ctx, wallet);
     return {
       _id: wallet._id,
       address: wallet.address,
@@ -288,13 +284,9 @@ export const openInvoice = mutation({
       throw new Error("That many lots would exceed the supply cap.");
     }
 
-    // Approved tier: the first 200 wallets. A price, not a guarantee.
-    const faucetUsers = await ctx.db
-      .query("wallets")
-      .withIndex("by_creation", (q) => q.lt("createdAt", 9e15))
-      .order("asc")
-      .take(200);
-    const isApproved = faucetUsers.some((w) => w._id === wallet._id);
+    // Approved tier: cleared by the pre-launch whitelist. A price, not a
+    // guarantee — approval unlocks the rate, it does not reserve supply.
+    const isApproved = await isWalletWhitelisted(ctx, wallet);
     const perLot =
       tier === "approved" && isApproved
         ? APPROVED_RATE_LAMPORTS

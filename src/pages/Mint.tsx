@@ -654,6 +654,21 @@ function MintForm({
                 Caps are per wallet across every invoice: {lotsLeft} of {cap}{" "}
                 lots left on the {tier} rate. First come, first served.
               </p>
+              {!approved && (
+                <div className="mt-3 rounded-lg border border-primary/25 bg-primary/5 p-3">
+                  <p className="text-[11px] leading-5 text-muted-foreground">
+                    You're on the open rate. Whitelisted wallets pay{" "}
+                    <span className="font-semibold text-primary">
+                      {lamportsToSol(APPROVED_RATE_LAMPORTS)} SOL
+                    </span>{" "}
+                    per lot — apply on the{" "}
+                    <Link to="/whitelist" className="text-primary underline underline-offset-2">
+                      whitelist page
+                    </Link>
+                    .
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="rounded-xl border border-border/60 bg-background p-4 text-right">
@@ -1039,7 +1054,7 @@ function MintPageInner() {
       <div className="mb-8 flex flex-col gap-1">
         <GradientBadge className="w-fit">
           <span className="size-1.5 rounded-full bg-primary sol-pulse" />
-          Mint live · first come, first served
+          Mint live · approved rate for whitelisted wallets
         </GradientBadge>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">
           Mint {TICKER}

@@ -186,6 +186,23 @@ const schema = defineSchema(
       amount: v.number(),
     }).index("by_wallet_token", ["walletId", "tokenId"]),
 
+    // Pre-launch whitelist applications. The founder reviews these manually:
+    // follow + repost the X announcement, then paste the post link + wallet.
+    // An "approved" application is what grants the approved mint rate —
+    // matched by pasted wallet address or by the submitting account.
+    whitelistApplications: defineTable({
+      walletAddress: v.string(),
+      xHandle: v.string(),
+      postLink: v.string(),
+      userId: v.optional(v.id("users")),
+      status: v.string(), // "pending" | "approved" | "rejected"
+      createdAt: v.number(),
+      reviewedAt: v.optional(v.number()),
+    })
+      .index("by_wallet", ["walletAddress"])
+      .index("by_status", ["status"])
+      .index("by_user", ["userId"]),
+
     // Trades: SOL leg is escrowed at fill; the shielded leg settles from the
     // seller's browser, which alone can spend its notes.
     trades: defineTable({

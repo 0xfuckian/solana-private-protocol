@@ -90,12 +90,15 @@ function Hero() {
               size="lg"
               className="bg-sol-gradient text-[#04101a] font-semibold shadow-[0_0_28px_rgba(20,241,149,0.35)] hover:opacity-90"
             >
-              <Link to="/mint">
-                Mint {TICKER}
+              <Link to="/whitelist">
+                Join the whitelist
                 <ArrowRight className="ml-1 size-4" />
               </Link>
             </Button>
             <Button asChild size="lg" variant="outline">
+              <Link to="/mint">Mint {TICKER}</Link>
+            </Button>
+            <Button asChild size="lg" variant="ghost">
               <Link to="/protocol">Read the protocol</Link>
             </Button>
           </div>
@@ -231,7 +234,7 @@ function Rates() {
             <div className="h-full rounded-2xl bg-card p-6">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">Approved</h3>
-                <GradientBadge>First 200 wallets</GradientBadge>
+                <GradientBadge>Whitelist only</GradientBadge>
               </div>
               <p className="mt-4 font-mono-tabular text-3xl font-semibold text-primary">
                 {lamportsToSol(APPROVED_RATE_LAMPORTS)} SOL
@@ -251,7 +254,7 @@ function Rates() {
                 </li>
                 <li className="flex gap-2">
                   <Check className="mt-0.5 size-4 text-primary" />
-                  A price, not a guarantee — it does not reserve supply
+                  Granted by hand after the whitelist steps — it does not reserve supply
                 </li>
               </ul>
             </div>
@@ -285,7 +288,11 @@ function Rates() {
 
         <p className="mt-6 text-xs text-muted-foreground">
           Protocol limit: {formatTokenAmount(5_000_000)} {TICKER} per single
-          mint. Approved is a price, not a reservation.
+          mint. Approved is granted after the{" "}
+          <Link to="/whitelist" className="text-primary underline underline-offset-2">
+            whitelist steps
+          </Link>
+          ; it is a price, not a reservation.
         </p>
       </div>
     </section>
@@ -627,24 +634,32 @@ function FinalCta() {
             <KeyRound className="size-6 text-[#04101a]" />
           </div>
           <h2 className="mt-6 max-w-xl text-3xl font-semibold tracking-tight sm:text-4xl">
-            The mint is open.{" "}
-            <span className="text-sol-gradient">Supply is not infinite.</span>
+            The mint is coming.{" "}
+            <span className="text-sol-gradient">The list is open now.</span>
           </h2>
           <p className="mt-4 max-w-lg text-sm leading-6 text-muted-foreground sm:text-base">
             {formatTokenAmount(TOTAL_SUPPLY)} {TICKER}.{" "}
-            {formatTokenAmount(TOTAL_LOTS)} lots. When it's gone, the market
-            opens and the mint never comes back.
+            {formatTokenAmount(TOTAL_LOTS)} lots. Whitelisted wallets mint at
+            {" "}
+            {lamportsToSol(APPROVED_RATE_LAMPORTS)} SOL per lot — everyone else
+            pays {lamportsToSol(OPEN_RATE_LAMPORTS)}. When supply is gone, the
+            market opens and the mint never comes back.
           </p>
-          <Button
-            asChild
-            size="lg"
-            className="mt-8 bg-sol-gradient font-semibold text-[#04101a] shadow-[0_0_28px_rgba(20,241,149,0.35)] hover:opacity-90"
-          >
-            <Link to="/mint">
-              Create your wallet
-              <ArrowRight className="ml-1 size-4" />
-            </Link>
-          </Button>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <Button
+              asChild
+              size="lg"
+              className="bg-sol-gradient font-semibold text-[#04101a] shadow-[0_0_28px_rgba(20,241,149,0.35)] hover:opacity-90"
+            >
+              <Link to="/whitelist">
+                Apply for the whitelist
+                <ArrowRight className="ml-1 size-4" />
+              </Link>
+            </Button>
+            <Button asChild size="lg" variant="outline">
+              <Link to="/mint">Mint {TICKER} now</Link>
+            </Button>
+          </div>
         </motion.div>
       </div>
     </section>
