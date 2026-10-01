@@ -36,7 +36,7 @@ const schema = defineSchema(
       role: v.optional(roleValidator),
     }).index("email", ["email"]),
 
-    // ---- S404 protocol -----------------------------------------------------
+    // ---- SOL-ZK protocol ---------------------------------------------------
 
     // Singleton: key === "global"
     protocolState: defineTable({
@@ -48,7 +48,11 @@ const schema = defineSchema(
       mintOpen: v.boolean(),
       marketOpen: v.boolean(),
       genesisMs: v.number(),
-      feeLamportsCollected: v.number(),
+      // The protocol's half of every fee (mint + market).
+      treasuryLamports: v.number(),
+      // 95% of every mint, held inside the vault as protocol liquidity and
+      // backstopping withdrawals.
+      liquidityLamports: v.number(),
       liquiditySeeded: v.optional(v.boolean()),
     }).index("by_key", ["key"]),
 
@@ -132,6 +136,34 @@ const schema = defineSchema(
     })
       .index("by_status", ["status"])
       .index("by_maker", ["makerWalletId"]),
+
+    // The vault works like a liquidity pool: depositors provide SOLZK
+    // (from mints, trades and transfers), the pool's 95% mint liquidity and
+    // transaction fees are distributed pro rata, and withdrawal routes
+    // through the pool back to notes.
+    vaultDeposits: defineTable({
+      walletId: v.id("wallets"),
+      // Weighted shares of the pool (mint liquidity + deposits + fee pool).
+      shares: v.number(),
+      depositedTokens: v.number(),
+      lamportsIn: v.number(),
+      accumulatedFees: v.number(),
+      lastClaimAt: v.optional(v.number()),
+      createdAt: v.number(),
+    }).index("by_wallet", ["walletId"]),
+
+    // Global vault accounting: pool size, fee pool, share supply.
+    vaultPool: defineTable({
+      key: v.literal("global"),
+      // Total SOLZK deposited by users (their claim on the pool).
+      depositedTokens: v.number(),
+      // Total share supply outstanding.
+      totalShares: v.number(),
+      // Fee pool awaiting distribution (lamports, from mint + trade fees).
+      feePoolLamports: v.number(),
+      feesDistributedLamports: v.number(),
+      updatedAt: v.number(),
+    }).index("by_key", ["key"]),
 
     // The vault (launchpad): shielded tokens anyone can deploy.
     vaultTokens: defineTable({

@@ -1,5 +1,5 @@
 /**
- * S404 shielded wallet — everything runs in the browser.
+ * SOL-ZK shielded wallet — everything runs in the browser.
  *
  * Model (mirrors a simplified Sapling-style scheme):
  *  - 24-word seed → deterministic spend key (SHA-256 chain over the words).
@@ -112,7 +112,7 @@ export function validateSeedWords(words: string[]): {
 /** Deterministic 32-byte seed hex from the words (order matters). */
 export async function seedHexFromWords(words: string[]): Promise<string> {
   const normalized = words.map((w) => w.trim().toLowerCase()).join(" ");
-  let h = await sha256Hex("s404-seed-v1:" + normalized);
+  let h = await sha256Hex("solzk-seed-v1:" + normalized);
   for (let i = 0; i < 8; i++) {
     h = await sha256Hex(h + ":" + i);
   }
@@ -121,12 +121,12 @@ export async function seedHexFromWords(words: string[]): Promise<string> {
 
 /** Spend key = another deterministic hash of the seed. */
 export async function spendKeyFromSeedHex(seedHex: string): Promise<string> {
-  return sha256Hex("s404-spend-v1:" + seedHex);
+  return sha256Hex("solzk-spend-v1:" + seedHex);
 }
 
 /** The public shielded address for a seed (44-char base58-style). */
 export async function addressFromSeedHex(seedHex: string): Promise<string> {
-  const addrHash = await sha256Hex("s404-addr-v1:" + seedHex);
+  const addrHash = await sha256Hex("solzk-addr-v1:" + seedHex);
   return pseudoBase58(44, mulberryFromHex(addrHash));
 }
 
@@ -254,14 +254,14 @@ export async function commitmentFor(
   nonce: string,
   spendKeyHex: string,
 ): Promise<string> {
-  return sha256Hex(`s404-note:${value}:${nonce}:${spendKeyHex}`);
+  return sha256Hex(`solzk-note:${value}:${nonce}:${spendKeyHex}`);
 }
 
 export async function nullifierFor(
   commitment: string,
   spendKeyHex: string,
 ): Promise<string> {
-  return sha256Hex(`s404-nullifier:${commitment}:${spendKeyHex}`);
+  return sha256Hex(`solzk-nullifier:${commitment}:${spendKeyHex}`);
 }
 
 /** Sealed-note ciphertext size: 512 bytes → the 934-byte mint envelope. */
@@ -287,7 +287,7 @@ export async function sealNoteFor(
   const eph = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const keyMaterial = await sha256Hex(
-    `s404-view:${receiverAddress}:${bufToB64(eph.buffer)}`,
+    `solzk-view:${receiverAddress}:${bufToB64(eph.buffer)}`,
   );
   const keyBytes = hexToBuf(keyMaterial);
   const key = await crypto.subtle.importKey(
@@ -322,7 +322,7 @@ export async function tryUnsealNote(
   try {
     void NOTE_PLAINTEXT_BYTES;
     const keyMaterial = await sha256Hex(
-      `s404-view:${myAddress}:${sealed.ephemeral}`,
+      `solzk-view:${myAddress}:${sealed.ephemeral}`,
     );
     const keyBytes = hexToBuf(keyMaterial);
     const key = await crypto.subtle.importKey(
@@ -363,7 +363,7 @@ export function buildEnvelopePayload(
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
-  const prefix = `S404|${kind}|${b64.length}|`;
+  const prefix = `SOLZK|${kind}|${b64.length}|`;}
   let payload = prefix + b64;
   const total = totalBytes * 2;
   if (payload.length > total) {
@@ -395,7 +395,7 @@ export async function buildProof(payload: string): Promise<{
   proofBytes: number;
 }> {
   const inner = await sha256Hex(payload);
-  const proof = await sha256Hex(inner + "s404-circuit-v1");
+  const proof = await sha256Hex(inner + "solzk-circuit-v1");
   return {
     proof,
     // Mimics a Groth16 proof size
@@ -412,8 +412,8 @@ export function proofStatement(payload: string): string {
 // Local storage (encrypted seed only — password never leaves the device)
 // ---------------------------------------------------------------------------
 
-const WALLET_KEY = "s404.wallet.v1";
-const WALLET_ID_KEY = "s404.walletId";
+const WALLET_KEY = "solzk.wallet.v1";
+const WALLET_ID_KEY = "solzk.walletId";
 
 export function saveWalletBlob(blob: WalletBlob) {
   localStorage.setItem(WALLET_KEY, JSON.stringify(blob));
