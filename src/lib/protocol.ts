@@ -16,16 +16,16 @@ export const LOT_SIZE = 10_000;
 export const TOTAL_LOTS = TOTAL_SUPPLY / LOT_SIZE; // 21,000
 
 /** Protocol limit for a single mint. */
-export const MAX_MINT_PER_TX = 5_000_000; // 500 lots
+export const MAX_MINT_PER_TX = 10_000_000; // 1,000 lots
 
 /**
  * Pricing: approved 0.015 SOL per lot, open 0.035 SOL per lot.
  */
-export const APPROVED_RATE_LAMPORTS = 15_000_000; // 0.015 SOL per lot
-export const OPEN_RATE_LAMPORTS = 35_000_000; // 0.035 SOL per lot
+export const APPROVED_RATE_LAMPORTS = 1_500_000; // 0.015 SOL per lot
+export const OPEN_RATE_LAMPORTS = 3_500_000; // 0.035 SOL per lot
 
-export const APPROVED_MAX_LOTS = 100; // 1,000,000 SOLZK · 0.1 SOL
-export const OPEN_MAX_LOTS = 500; // 5,000,000 SOLZK · 1.5 SOL
+export const APPROVED_MAX_LOTS = 100; // 1,000,000 SOLZK · 1.5 SOL
+export const OPEN_MAX_LOTS = 1_000; // 10,000,000 SOLZK · 35 SOL
 
 export const LAMPORTS_PER_SOL = 100_000_000;
 
@@ -182,3 +182,6 @@ export function marketFeeSplit(fee: number): {
 export function lotsRemainingFor(tier: RateTier, lotsUsed: number): number {
   return Math.max(0, RATE_TIERS[tier].maxLots - lotsUsed);
 }
+
+/** Single-mint cap in lots, derived from MAX_MINT_PER_TX. */
+export const MAX_LOTS_PER_TX = MAX_MINT_PER_TX / LOT_SIZE; // 1,000

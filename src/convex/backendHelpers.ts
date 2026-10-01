@@ -145,7 +145,15 @@ export async function ensureVaultPool(
   return (await ctx.db.get(id))!;
 }
 
-/** Credit the fee pool and the treasury: half of every fee each way. */
+/**
+ * Credit the fee pool and the treasury: half of every fee each way.
+ *
+ * Fees that arrive before any depositor exists are NOT lost: they keep
+ * accruing in the pool and are credited pro rata to the first depositors —
+ * exactly how an empty LP pool works (early LPs are entitled to the fees
+ * the pool already holds, otherwise nobody would provide liquidity first).
+ * This is why feePerShare only advances per existing share.
+ */
 export async function routeFee(
   ctx: MutationCtx,
   state: Doc<"protocolState">,
@@ -163,8 +171,8 @@ export async function routeFee(
       updatedAt: Date.now(),
     });
   } else {
-    // No depositors yet — the whole fee sits in the pool until someone
-    // deposits, which is exactly how an empty LP pool behaves.
+    // No depositors yet — the fee waits in the pool; the first depositors
+    // capture it when they mint shares.
     await ctx.db.patch(pool._id, {
       feePoolLamports: pool.feePoolLamports + vaultCut,
       updatedAt: Date.now(),

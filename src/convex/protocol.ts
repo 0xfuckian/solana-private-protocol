@@ -19,6 +19,7 @@ import {
   ENVELOPE_MINT_BYTES,
   ENVELOPE_TRANSFER_BYTES,
   LOT_SIZE,
+  MAX_LOTS_PER_TX,
   MINT_FEE_BPS,
   OPEN_MAX_LOTS,
   OPEN_RATE_LAMPORTS,
@@ -277,8 +278,8 @@ export const openInvoice = mutation({
     const state = await ensureProtocolState(ctx);
 
     if (!state.mintOpen) throw new Error("The mint is closed.");
-    if (!Number.isInteger(lots) || lots < 1 || lots > 500) {
-      throw new Error("Pick between 1 and 500 lots.");
+    if (!Number.isInteger(lots) || lots < 1 || lots > MAX_LOTS_PER_TX) {
+      throw new Error(`Pick between 1 and ${MAX_LOTS_PER_TX.toLocaleString()} lots.`);
     }
     if (state.mintedTokens + lots * LOT_SIZE > state.totalSupply) {
       throw new Error("That many lots would exceed the supply cap.");
@@ -601,11 +602,25 @@ export const simulateSellout = mutation({
   handler: async (ctx) => {
     const state = await ensureProtocolState(ctx);
     if (state.marketOpen) return { already: true };
+    const pool = await ensureVaultPool(ctx);
+
+    // Route the fees the sold-out mint would have collected for the lots
+    // that never went through real invoices (priced at the open rate), so
+    // the vault demo is coherent: depositors can claim mint fees.
+    const unmintedLots = Math.floor(
+      Math.max(0, state.totalSupply - state.mintedTokens) / LOT_SIZE,
+    );
+    const gross = unmintedLots * OPEN_RATE_LAMPORTS;
+    const mintFee = Math.ceil((gross * MINT_FEE_BPS) / 10_000);
+    const liquidityCut = gross - mintFee;
+    if (mintFee > 0) await routeFee(ctx, state, pool, mintFee);
+
     await ctx.db.patch(state._id, {
       mintedTokens: state.totalSupply,
       mintOpen: false,
       marketOpen: true,
       liquiditySeeded: true,
+      liquidityLamports: state.liquidityLamports + liquidityCut,
     });
     return { opened: true };
   },

@@ -167,25 +167,6 @@ const schema = defineSchema(
       updatedAt: v.number(),
     }).index("by_key", ["key"]),
 
-    // The vault (launchpad): shielded tokens anyone can deploy.
-    vaultTokens: defineTable({
-      ticker: v.string(),
-      name: v.string(),
-      maxSupply: v.number(),
-      mintedTokens: v.number(),
-      priceLamportsPerKilo: v.number(),
-      mintOpen: v.boolean(),
-      creator: v.string(),
-      createdAt: v.number(),
-      holders: v.number(),
-    }).index("by_ticker", ["ticker"]),
-
-    vaultBalances: defineTable({
-      tokenId: v.id("vaultTokens"),
-      walletId: v.id("wallets"),
-      amount: v.number(),
-    }).index("by_wallet_token", ["walletId", "tokenId"]),
-
     // Pre-launch whitelist applications. The founder reviews these manually:
     // follow + repost the X announcement, then paste the post link + wallet.
     // An "approved" application is what grants the approved mint rate —
