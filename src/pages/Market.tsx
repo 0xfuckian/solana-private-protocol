@@ -344,7 +344,8 @@ function MarketInner() {
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 Simulation only: jump the mint to its sold-out state to see
                 the book open. On mainnet this happens when the last lot is
-                minted — not before.
+                minted — not before. Safe to run again: it backfills the
+                mint fees a sold-out mint would have paid into the vault.
               </p>
             </div>
             <Button
@@ -355,7 +356,7 @@ function MarketInner() {
                   toast.success(
                     r.opened
                       ? "Mint sold out — the book is open."
-                      : "Already open.",
+                      : "Already open — mint fees backfilled to the vault.",
                   );
                 } catch (e) {
                   toast.error(e instanceof Error ? e.message : "Failed");
@@ -392,6 +393,11 @@ function MarketInner() {
                 live
               </GradientBadge>
             </div>
+            <p className="mt-2 font-mono-tabular text-[11px] text-muted-foreground">
+              Devnet: mint fees for unminted lots are backfilled to the vault
+              via the simulate-sellout control — rerun it once after a
+              sold-out demo to keep claimable fees coherent.
+            </p>
 
             <div className="mt-5 grid grid-cols-2 gap-6">
               <div>

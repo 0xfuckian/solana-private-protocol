@@ -9,9 +9,15 @@ import {
   protocolStateOrDefault,
   readVaultPool,
   requireUserId,
+  routeFee,
 } from "./backendHelpers";
 import { CIPHERTEXT_B64_LEN } from "./protocol";
 import { sha256Hex } from "./sha256";
+import {
+  LOT_SIZE,
+  MINT_FEE_BPS,
+  OPEN_RATE_LAMPORTS,
+} from "../lib/protocol";
 
 /**
  * The vault opens with the mint. Before that there is no pool to size,
@@ -50,6 +56,13 @@ export const getPool = query({
       // Window flags for the UI.
       mintOpen: state.mintOpen,
       marketOpen: state.marketOpen,
+      // Legacy-state repair pending: the mint closed but the sellout's
+      // implied mint fees were never routed (pre-fix demo state). Claiming
+      // will backfill them first.
+      backfillPending:
+        !state.mintOpen &&
+        pool.feePoolLamports === 0 &&
+        pool.feesDistributedLamports === 0,
     };
   },
 });
@@ -134,10 +147,10 @@ export const deposit = mutation({
     }
 
     // Shares = pro rata against the existing share supply.
-    const mintedShares =
-      pool.totalShares === 0
-        ? amountTokens // first depositor: 1 share per token
-        : Math.floor((amountTokens * pool.totalShares) / Math.max(1, pool.depositedTokens));
+    const firstDeposit = pool.totalShares === 0;
+    const mintedShares = firstDeposit
+      ? amountTokens // first depositor: 1 share per token
+      : Math.floor((amountTokens * pool.totalShares) / Math.max(1, pool.depositedTokens));
 
     const slot = Math.floor((Date.now() - state.genesisMs) / 400);
     for (const n of nullifiers) {
@@ -164,7 +177,11 @@ export const deposit = mutation({
         shares: mintedShares,
         depositedTokens: amountTokens,
         lamportsIn: 0,
-        accumulatedFees: 0,
+        // Checkpoint at the current feePerShare: new shares only earn fees
+        // routed from this point on, never the pool's past fees.
+        accumulatedFees: Math.floor(
+          (pool.feePerShare * mintedShares) / 1e12,
+        ),
         createdAt: Date.now(),
       });
     }
@@ -174,6 +191,19 @@ export const deposit = mutation({
       totalShares: pool.totalShares + mintedShares,
       updatedAt: Date.now(),
     });
+
+    // First-depositor capture: every lamport that pooled before any shares
+    // existed is unattributed (feePerShare never advanced without shares).
+    // Credit the standing fee pool to the founding shares — the empty-LP-pool
+    // rule that makes being first worth the risk.
+    if (firstDeposit && pool.feePoolLamports > 0) {
+      await ctx.db.patch(pool._id, {
+        feePerShare:
+          pool.feePerShare +
+          Math.floor((pool.feePoolLamports * 1e12) / mintedShares),
+        updatedAt: Date.now(),
+      });
+    }
 
     return { shares: mintedShares };
   },
@@ -189,7 +219,37 @@ export const claimFees = mutation({
   handler: async (ctx) => {
     const userId = await requireUserId(ctx);
     const wallet = await getWalletForUserOrThrow(ctx, userId);
-    const pool = await ensureVaultPool(ctx);
+    const state = await ensureProtocolState(ctx);
+    let pool = await ensureVaultPool(ctx);
+
+    // Legacy-state repair: if the mint is already sold out (or closed) but
+    // the pool never received the sellout's implied mint fees — e.g. the
+    // sellout ran before fee routing existed — backfill them once here so
+    // depositors can actually claim. Guards on liquiditySeeded being unset
+    // while liquidity exists is not reliable; instead we detect the exact
+    // legacy signature: market open, zero fees ever routed, zero distributed.
+    if (
+      !state.mintOpen &&
+      pool.feePoolLamports === 0 &&
+      pool.feesDistributedLamports === 0
+    ) {
+      // Zero fees ever routed: no real mint settled under the new router.
+      // Backfill the sellout's implied mint fees for the whole supply —
+      // that is the coherent history for a fully simulated sellout.
+      const lots =
+        state.mintedTokens >= state.totalSupply
+          ? Math.floor(state.totalSupply / LOT_SIZE)
+          : Math.floor(
+              Math.max(0, state.totalSupply - state.mintedTokens) / LOT_SIZE,
+            );
+      const gross = lots * OPEN_RATE_LAMPORTS;
+      const mintFee = Math.ceil((gross * MINT_FEE_BPS) / 10_000);
+      if (mintFee > 0) {
+        await routeFee(ctx, state, pool, mintFee);
+        pool = (await ctx.db.get(pool._id))!;
+      }
+    }
+
     const deposit = await ctx.db
       .query("vaultDeposits")
       .withIndex("by_wallet", (q) => q.eq("walletId", wallet._id))
@@ -197,6 +257,9 @@ export const claimFees = mutation({
     if (!deposit || deposit.shares === 0) {
       throw new Error("Nothing deposited — no fees to claim.");
     }
+    // First-depositor capture: fees that pooled up before the first deposit
+    // belong to the depositors that arrive first (how an empty LP pool works).
+    // New depositors only earn fees routed after their shares exist.
     const accruedTotal = Math.floor(
       (pool.feePerShare * deposit.shares) / 1e12,
     );

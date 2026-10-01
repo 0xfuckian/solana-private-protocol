@@ -35,6 +35,7 @@ interface PoolInfo {
   treasuryLamports: number;
   mintOpen: boolean;
   marketOpen: boolean;
+  backfillPending: boolean;
 }
 
 interface MyPosition {
@@ -200,13 +201,18 @@ function LiquidityPanel() {
                 <Button
                   size="sm"
                   className="bg-sol-gradient font-semibold text-[#04101a] hover:opacity-90"
-                  disabled={busy !== null || position.claimableLamports <= 0}
+                  disabled={
+                    busy !== null ||
+                    (position.claimableLamports <= 0 && !pool?.backfillPending)
+                  }
                   onClick={async () => {
                     setBusy("claim");
                     try {
                       const r = await slk.claimVaultFees();
                       toast.success(
-                        `${lamportsToSol(r.claimedLamports)} SOL claimed to your wallet.`,
+                        r.claimedLamports > 0
+                          ? `${lamportsToSol(r.claimedLamports)} SOL claimed to your wallet.`
+                          : "Vault fees reconciled — your share is now claimable.",
                       );
                     } catch (e) {
                       toast.error(

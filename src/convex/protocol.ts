@@ -601,14 +601,18 @@ export const simulateSellout = mutation({
   args: {},
   handler: async (ctx) => {
     const state = await ensureProtocolState(ctx);
-    if (state.marketOpen) return { already: true };
+    // Idempotent even after an older sellout that skipped fee routing:
+    // route the implied fees for the lots that never went through real
+    // invoices, so vault depositors can claim what sellout should have paid.
+    const alreadyOpen = state.marketOpen;
     const pool = await ensureVaultPool(ctx);
 
     // Route the fees the sold-out mint would have collected for the lots
     // that never went through real invoices (priced at the open rate), so
     // the vault demo is coherent: depositors can claim mint fees.
+    const alreadyMinted = state.mintedTokens;
     const unmintedLots = Math.floor(
-      Math.max(0, state.totalSupply - state.mintedTokens) / LOT_SIZE,
+      Math.max(0, state.totalSupply - alreadyMinted) / LOT_SIZE,
     );
     const gross = unmintedLots * OPEN_RATE_LAMPORTS;
     const mintFee = Math.ceil((gross * MINT_FEE_BPS) / 10_000);
@@ -622,7 +626,7 @@ export const simulateSellout = mutation({
       liquiditySeeded: true,
       liquidityLamports: state.liquidityLamports + liquidityCut,
     });
-    return { opened: true };
+    return alreadyOpen ? { opened: false } : { opened: true };
   },
 });
 

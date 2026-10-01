@@ -8,6 +8,7 @@ import {
   ENVELOPE_MINT_BYTES,
   ENVELOPE_TRANSFER_BYTES,
   LOT_SIZE,
+  MAX_MINT_PER_TX,
   OPEN_MAX_LOTS,
   OPEN_RATE_LAMPORTS,
   TICKER,
@@ -218,7 +219,8 @@ export default function Protocol() {
             are two prices. Caps are per wallet and counted across every
             invoice you open. Total supply is {formatTokenAmount(TOTAL_SUPPLY)}{" "}
             {TICKER} — ten percent of Solana's circulating SOL base — with a
-            protocol limit of {formatTokenAmount(5_000_000)} per single mint.
+            protocol limit of {formatTokenAmount(MAX_MINT_PER_TX)} per single
+            mint.
           </p>
           <RatesTable />
           <p>

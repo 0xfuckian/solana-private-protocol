@@ -8,6 +8,7 @@ import {
   ENVELOPE_MINT_BYTES,
   ENVELOPE_TRANSFER_BYTES,
   LOT_SIZE,
+  MAX_MINT_PER_TX,
   OPEN_MAX_LOTS,
   OPEN_RATE_LAMPORTS,
   TICKER,
@@ -287,8 +288,8 @@ function Rates() {
         </div>
 
         <p className="mt-6 text-xs text-muted-foreground">
-          Protocol limit: {formatTokenAmount(5_000_000)} {TICKER} per single
-          mint. Approved is granted after the{" "}
+          Protocol limit: {formatTokenAmount(MAX_MINT_PER_TX)} {TICKER} per
+          single mint. Approved is granted after the{" "}
           <Link to="/whitelist" className="text-primary underline underline-offset-2">
             whitelist steps
           </Link>
@@ -521,9 +522,9 @@ const ROADMAP = [
     body: "Opens when the mint sells out. Signed limit orders settled in SOL with no custody at any point.",
   },
   {
-    title: "Vault (launchpad)",
+    title: "Vault",
     status: "shipped",
-    body: `Anyone can deploy a shielded token — a ticker, a cap, a per-mint limit — published as an envelope like any other.`,
+    body: `Deposit ${TICKER} like adding liquidity. Shares earn the vault's half of every fee — claimable any time — and withdrawals route back to sealed notes. No exit to ordinary SOL.`,
   },
   {
     title: "Fee sharing",
