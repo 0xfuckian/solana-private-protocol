@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   GradientBadge,
   Stat,
@@ -10,11 +11,18 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { api } from "@/convex/_generated/api";
 import {
   LOT_SIZE,
+  RATE_TIERS,
+  RELAYER_FEE_LAMPORTS,
+  RELAYER_FEE_NOTE_TOKENS,
   TICKER,
   TOTAL_SUPPLY,
+  discountTierForBurned,
   formatTokenAmount,
   lamportsToSol,
+  nextDiscountTier,
+  payLinkUrl,
   shortAddress,
+  transferFeeTokens,
 } from "@/lib/protocol";
 import { useSolzk } from "@/lib/solzk-context";
 import {
@@ -22,8 +30,13 @@ import {
   Copy,
   Droplets,
   Eye,
+  Flame,
+  KeyRound,
+  Link2,
+  Loader2,
   Lock,
   RefreshCw,
+  ScanLine,
   Unlock,
   Wallet,
 } from "lucide-react";
@@ -110,7 +123,15 @@ function SendCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
   const [receiver, setReceiver] = useState("");
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
+  const [feeInNote, setFeeInNote] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const amountNum = Number(amount) || 0;
+  const burned = slk.serverWallet?.burnedTokens ?? 0;
+  const tier = discountTierForBurned(burned);
+  const fee = amountNum > 0 ? transferFeeTokens(amountNum, tier.discountBps) : 0;
+  const relayerFee = feeInNote ? RELAYER_FEE_NOTE_TOKENS : 0;
+  const net = Math.max(0, amountNum - fee - relayerFee);
 
   return (
     <Card>
@@ -142,14 +163,59 @@ function SendCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
               maxLength={24}
             />
           </div>
+
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background px-3 py-2.5">
+            <div>
+              <p className="text-xs font-semibold">Fee-in-note</p>
+              <p className="text-[11px] leading-4 text-muted-foreground">
+                The note pays the relayer — send with zero SOL in the wallet.
+              </p>
+            </div>
+            <Switch checked={feeInNote} onCheckedChange={setFeeInNote} />
+          </div>
+
+          <div className="rounded-lg border border-border/60 bg-background px-3 py-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">
+                Protocol fee ({tier.label}
+                {tier.discountBps > 0
+                  ? ` · −${(tier.discountBps / 100).toFixed(1).replace(".0", "")}%`
+                  : ""}
+                )
+              </span>
+              <span className="font-mono-tabular">
+                {formatTokenAmount(fee)} {TICKER}
+              </span>
+            </div>
+            <div className="mt-1 flex justify-between">
+              <span className="text-muted-foreground">
+                {feeInNote ? "Relayer fee · in-note" : "Network fee · SOL"}
+              </span>
+              <span className="font-mono-tabular">
+                {feeInNote
+                  ? `${RELAYER_FEE_NOTE_TOKENS} ${TICKER}`
+                  : `${lamportsToSol(RELAYER_FEE_LAMPORTS)} SOL`}
+              </span>
+            </div>
+            {amountNum > 0 && (
+              <div className="mt-1 flex justify-between border-t border-border/50 pt-1">
+                <span className="text-muted-foreground">Receiver gets</span>
+                <span className="font-mono-tabular text-primary">
+                  {formatTokenAmount(net)} {TICKER}
+                </span>
+              </div>
+            )}
+          </div>
+
           <Button
             className="w-full bg-sol-gradient font-semibold text-[#04101a] hover:opacity-90"
             disabled={
               busy ||
               !slk.address ||
               !receiver ||
-              Number(amount) <= 0 ||
-              Number(amount) > slk.balance
+              amountNum <= 0 ||
+              amountNum > slk.balance ||
+              (amountNum > 0 && net <= 0)
             }
             onClick={async () => {
               setBusy(true);
@@ -158,9 +224,10 @@ function SendCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
                   receiver,
                   Number(amount),
                   memo || "transfer",
+                  { feeInNote },
                 );
                 toast.success(
-                  `Sent. Envelope in slot ${res.slot.toLocaleString()} — ${shortAddress(res.signature, 8, 6)}`,
+                  `Sent. Envelope in slot ${res.slot.toLocaleString()} — ${shortAddress(res.signature, 8, 6)}${feeInNote ? " · relayer paid in-note" : ""}`,
                 );
                 setReceiver("");
                 setAmount("");
@@ -184,6 +251,292 @@ function SendCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
             {slk.notes.length} note{slk.notes.length === 1 ? "" : "s"}.
           </p>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+const BURN_OPTIONS = [1_000, 10_000, 100_000] as const;
+
+function BurnCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
+  const [busy, setBusy] = useState(false);
+  const burned = slk.serverWallet?.burnedTokens ?? 0;
+  const tier = discountTierForBurned(burned);
+  const next = nextDiscountTier(burned);
+
+  return (
+    <Card>
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold">Burn for fee discount</h2>
+          <Flame className="size-4 text-primary" />
+        </div>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          Burn {TICKER} from your notes to set a permanent, public fee tier.
+          Burned tokens leave the supply forever — the discount applies to
+          every transfer you ever send.
+        </p>
+        <div className="mt-4 rounded-lg border border-border/60 bg-background px-3 py-2.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Your tier</span>
+            <span className="font-semibold text-primary">
+              {tier.label}
+              {tier.discountBps > 0
+                ? ` · −${(tier.discountBps / 100).toFixed(1).replace(".0", "")}% fees`
+                : ""}
+            </span>
+          </div>
+          <div className="mt-1 flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Burned</span>
+            <span className="font-mono-tabular">
+              {formatTokenAmount(burned)} {TICKER}
+            </span>
+          </div>
+          {next && (
+            <div className="mt-1 flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">
+                Next: {next.label} at −{(next.discountBps / 100).toFixed(1).replace(".0", "")}%
+              </span>
+              <span className="font-mono-tabular">
+                {formatTokenAmount(Math.max(0, next.minBurned - burned))} to go
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          {BURN_OPTIONS.map((opt) => (
+            <Button
+              key={opt}
+              variant="outline"
+              size="sm"
+              className="font-mono-tabular"
+              disabled={busy || opt > slk.balance}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  const r = await slk.burnForTier(opt);
+                  toast.success(
+                    `Burned ${formatTokenAmount(opt)} ${TICKER} — ${r.tierLabel} tier: −${(r.discountBps / 100).toFixed(1).replace(".0", "")}% fees.`,
+                  );
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Burn failed");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy ? (
+                <Loader2 className="mr-1 size-3 animate-spin" />
+              ) : (
+                <Flame className="mr-1 size-3 text-primary" />
+              )}
+              {formatTokenAmount(opt)}
+            </Button>
+          ))}
+        </div>
+        <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+          Ember 1,000 → −25% · Onyx 10,000 → −50% · Obsidian 100,000 → −75%.
+          Needs notes to cover the burn.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ViewKeysCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
+  const [scanAddr, setScanAddr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [results, setResults] = useState<
+    { value: number; memo: string; slot: number }[] | null
+  >(null);
+  const [scannedFor, setScannedFor] = useState("");
+
+  const masked = (k: string | null) => (k ? `${k.slice(0, 10)}…${k.slice(-6)}` : "—");
+
+  return (
+    <Card>
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold">View keys</h2>
+          <KeyRound className="size-4 text-primary" />
+        </div>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          Derived from your seed, held on this device. The incoming key can
+          read what you receive without spending it; the outgoing key reads
+          your sent memos. Share with auditors only — they see value, never
+          spend authority.
+        </p>
+        <div className="mt-4 space-y-2">
+          {[
+            { label: "Incoming (IVK)", key: slk.viewKeys.incoming },
+            { label: "Outgoing (OVK)", key: slk.viewKeys.outgoing },
+          ].map((row) => (
+            <div
+              key={row.label}
+              className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background px-3 py-2"
+            >
+              <div className="min-w-0">
+                <p className="text-xs font-medium">{row.label}</p>
+                <code className="font-mono-tabular text-[11px] text-muted-foreground">
+                  {masked(row.key)}
+                </code>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled={!row.key}
+                onClick={() => {
+                  navigator.clipboard.writeText(row.key ?? "");
+                  toast.success(`${row.label} copied — treat it like a read-only key.`);
+                }}
+              >
+                <Copy className="size-3.5" />
+              </Button>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 rounded-lg bg-primary/5 px-3 py-2 text-[11px] leading-4 text-muted-foreground">
+          1-byte view tags are embedded in every new note — this scan matched{" "}
+          <span className="font-semibold text-primary">{slk.tagMatches}</span>{" "}
+          tag{slk.tagMatches === 1 ? "" : "s"} and decrypted those first.
+        </p>
+
+        <div className="mt-4 border-t border-border/60 pt-4">
+          <div className="flex items-center gap-2">
+            <ScanLine className="size-3.5 text-primary" />
+            <p className="text-xs font-semibold">Read-only scan</p>
+          </div>
+          <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+            Paste any shielded address to view its incoming notes — values and
+            memos, no nullifiers, nothing spendable.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <Input
+              placeholder="Shielded address (44 chars)"
+              value={scanAddr}
+              onChange={(e) => setScanAddr(e.target.value.trim())}
+              className="font-mono-tabular text-xs"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy || scanAddr.length !== 44}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  const out = await slk.scanAddress(scanAddr);
+                  setResults(out);
+                  setScannedFor(shortAddress(scanAddr));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy ? <Loader2 className="size-3.5 animate-spin" /> : "Scan"}
+            </Button>
+          </div>
+          {results !== null && (
+            <div className="mt-2 space-y-1">
+              {results.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No notes found for {scannedFor}.
+                </p>
+              ) : (
+                results.map((r) => (
+                  <div
+                    key={r.commitment}
+                    className="flex items-center justify-between rounded-md border border-border/50 px-2.5 py-1.5 text-xs"
+                  >
+                    <span className="font-mono-tabular">
+                      {formatTokenAmount(r.value)} {TICKER}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {r.memo} · slot {r.slot.toLocaleString()}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RequestPaymentCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
+  const [amount, setAmount] = useState("");
+  const [memo, setMemo] = useState("");
+  const [link, setLink] = useState("");
+
+  const amountNum = Number(amount) || 0;
+
+  return (
+    <Card>
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold">Request payment</h2>
+          <Link2 className="size-4 text-primary" />
+        </div>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          Generate a pay link: {TICKER} amount and memo encoded in the URL
+          fragment — it never touches a server. Anyone with a SOL-ZK wallet
+          opens the link and pays in one tap.
+        </p>
+        <div className="mt-4 flex gap-3">
+          <Input
+            type="number"
+            placeholder={`Amount (${TICKER})`}
+            value={amount}
+            onChange={(e) => {
+              setAmount(e.target.value);
+              setLink("");
+            }}
+            className="font-mono-tabular"
+          />
+          <Input
+            placeholder="Memo (optional)"
+            value={memo}
+            onChange={(e) => {
+              setMemo(e.target.value);
+              setLink("");
+            }}
+            maxLength={24}
+          />
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-3"
+          disabled={!slk.address || amountNum <= 0}
+          onClick={() => {
+            const url = payLinkUrl({
+              to: slk.address!,
+              amount: amountNum,
+              memo: memo || undefined,
+            });
+            setLink(url);
+          }}
+        >
+          <Link2 className="mr-1.5 size-3.5" /> Create pay link
+        </Button>
+        {link && (
+          <div className="mt-3 rounded-lg border border-border/60 bg-background p-3">
+            <code className="block break-all font-mono-tabular text-[11px] leading-4 text-muted-foreground">
+              {link}
+            </code>
+            <Button
+              size="sm"
+              className="mt-2 bg-sol-gradient font-semibold text-[#04101a] hover:opacity-90"
+              onClick={() => {
+                navigator.clipboard.writeText(link);
+                toast.success("Pay link copied — share it anywhere.");
+              }}
+            >
+              <Copy className="mr-1.5 size-3.5" /> Copy link
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -257,11 +610,7 @@ function DashboardInner() {
         <Stat
           label="Rate tier"
           value={approved ? "Approved" : "Open"}
-          sub={
-            approved
-              ? "0.0035 SOL per lot · 100-lot cap"
-              : "0.01 SOL per lot · 500-lot cap"
-          }
+          sub={`${lamportsToSol(RATE_TIERS[approved ? "approved" : "open"].perLotLamports)} SOL per lot · ${RATE_TIERS[approved ? "approved" : "open"].maxLots.toLocaleString()}-lot cap`}
         />
       </div>
 
@@ -339,6 +688,7 @@ function DashboardInner() {
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {n.memo} · slot {n.slot.toLocaleString()}
+                        {n.tagHit ? " · tag match" : ""}
                       </p>
                     </div>
                     <span className="size-1.5 rounded-full bg-primary" />
@@ -348,6 +698,12 @@ function DashboardInner() {
             </div>
           </CardContent>
         </Card>
+
+        <BurnCard slk={slk} />
+
+        <ViewKeysCard slk={slk} />
+
+        <RequestPaymentCard slk={slk} />
       </div>
 
       <Card>

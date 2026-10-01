@@ -3,10 +3,15 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import {
   CONFIRMATIONS_REQUIRED,
+  RELAYER_FEE_NOTE_TOKENS,
   SLOT_SECONDS,
+  TICKER,
   TOTAL_SUPPLY,
   addressFromHex,
+  discountTierForBurned,
+  formatTokenAmount,
   hashFromHex,
+  transferFeeTokens,
 } from "./protocol";
 import {
   addressFromSeedHex,
@@ -14,11 +19,14 @@ import {
   clearWalletBlob,
   commitmentFor,
   decryptSeed,
+  ephemeralMatchesTag,
   encryptSeed,
   generateSeedWords,
   getLinkedWalletId,
+  incomingViewKeyFromSeedHex,
   loadWalletBlob,
   nullifierFor,
+  outgoingViewKeyFromSeedHex,
   saveWalletBlob,
   sealNoteFor,
   seedHexFromWords,
@@ -95,6 +103,13 @@ export interface MyNote {
   slot: number;
   value: number;
   memo: string;
+  /** This note's 1-byte view tag matched ours — decrypted first in the scan. */
+  tagHit?: boolean;
+}
+
+export interface ViewKeys {
+  incoming: string | null;
+  outgoing: string | null;
 }
 
 export function useSolzk() {
@@ -106,6 +121,11 @@ export function useSolzk() {
   const [notes, setNotes] = useState<MyNote[]>([]);
   const [scanning, setScanning] = useState(false);
   const [scanBump, setScanBump] = useState(0);
+  const [viewKeys, setViewKeys] = useState<ViewKeys>({
+    incoming: null,
+    outgoing: null,
+  });
+  const [tagMatches, setTagMatches] = useState(0);
   const seedWordsRef = useRef<string[] | null>(null);
   const spendKeyRef = useRef<string | null>(null);
 
@@ -117,6 +137,8 @@ export function useSolzk() {
   const registerWalletMut = useMutation(api.protocol.registerWallet);
   const faucetMut = useMutation(api.protocol.faucet);
   const sendPrivateMut = useMutation(api.protocol.sendPrivate);
+  const burnForTierMut = useMutation(api.protocol.burnForTier);
+  const redeemMut = useMutation(api.protocol.redeem);
   const depositMut = useMutation(api.vault.deposit);
   const claimFeesMut = useMutation(api.vault.claimFees);
   const withdrawMut = useMutation(api.vault.withdraw);
@@ -128,12 +150,15 @@ export function useSolzk() {
   }, []);
 
   const deriveKeys = useCallback(async (sh: string) => {
-    const [addr, spend] = await Promise.all([
+    const [addr, spend, ivk, ovk] = await Promise.all([
       addressFromSeedHex(sh),
       spendKeyFromSeedHex(sh),
+      incomingViewKeyFromSeedHex(sh),
+      outgoingViewKeyFromSeedHex(sh),
     ]);
     setAddress(addr);
     spendKeyRef.current = spend;
+    setViewKeys({ incoming: ivk, outgoing: ovk });
   }, []);
 
   /** Unlock with password: decrypt the local seed, derive keys, link. */
@@ -206,6 +231,8 @@ export function useSolzk() {
     seedWordsRef.current = null;
     setBalance(0);
     setNotes([]);
+    setViewKeys({ incoming: null, outgoing: null });
+    setTagMatches(0);
     setPhase(loadWalletBlob() ? "locked" : "none");
   }, []);
 
@@ -215,6 +242,8 @@ export function useSolzk() {
     spendKeyRef.current = null;
     setSeedHex(null);
     setAddress(null);
+    setViewKeys({ incoming: null, outgoing: null });
+    setTagMatches(0);
     setPhase("none");
   }, []);
 
@@ -233,7 +262,16 @@ export function useSolzk() {
       setScanning(true);
       const published = new Set(spendableNotes.publishedNullifiers ?? []);
       const mine: MyNote[] = [];
+      let tags = 0;
       for (const n of spendableNotes.notes) {
+        // 1-byte view tag: match my tag first so the scan can prioritise
+        // (and on mainnet, skip) foreign notes without a trial decrypt.
+        const tagHit =
+          n.sealed.ephemeral !== "faucet" &&
+          n.sealed.ephemeral !== "none"
+            ? await ephemeralMatchesTag(address, n.sealed.ephemeral)
+            : false;
+        if (tagHit) tags++;
         const opened = await tryUnsealNote(address, n.sealed);
         if (opened) {
           const nullifier = await nullifierFor(
@@ -248,13 +286,23 @@ export function useSolzk() {
               slot: n.slot,
               value: opened.value,
               memo: opened.memo,
+              tagHit,
             });
           }
         }
       }
       if (cancelled) return;
+      // Tag matches first — newest value lands at the top of the wallet.
+      mine.sort((a, b) =>
+        a.tagHit === b.tagHit
+          ? b.slot - a.slot
+          : a.tagHit
+            ? -1
+            : 1,
+      );
       setNotes(mine);
       setBalance(mine.reduce((acc, n) => acc + n.value, 0));
+      setTagMatches(tags);
       setScanning(false);
     })();
     return () => {
@@ -290,11 +338,36 @@ export function useSolzk() {
     [faucetMut],
   );
 
-  /** Build and publish a shielded transfer (spend → receiver + change). */
+  /**
+   * Build and publish a shielded transfer (spend → receiver + change).
+   *
+   * Fee handling mirrors the node exactly:
+   *  - protocol fee: 2%, discounted by the caller's burn tier;
+   *  - fee-in-note ON: the relayer is paid RELAYER_FEE_NOTE_TOKENS out of
+   *    the spent value and no SOL is needed — the wallet stays spendable
+   *    at zero SOL balance;
+   *  - fee-in-note OFF: the sender pays the network fee in SOL.
+   */
   const sendPrivate = useCallback(
-    async (receiver: string, amount: number, memo: string) => {
+    async (
+      receiver: string,
+      amount: number,
+      memo: string,
+      opts?: { feeInNote?: boolean },
+    ) => {
       if (!address || !spendKeyRef.current) throw new Error("Wallet locked");
       if (balance < amount) throw new Error("Insufficient shielded balance");
+
+      // Same fee the node will compute, from the same public tier state.
+      const discount = discountTierForBurned(serverWallet?.burnedTokens ?? 0);
+      const fee = transferFeeTokens(amount, discount.discountBps);
+      const relayerFee = opts?.feeInNote ? RELAYER_FEE_NOTE_TOKENS : 0;
+      const net = amount - fee - relayerFee;
+      if (net <= 0) {
+        throw new Error(
+          `Amount too small — fees are ${formatTokenAmount(fee)}${relayerFee ? ` + ${formatTokenAmount(relayerFee)}` : ""} ${TICKER}.`,
+        );
+      }
 
       // Greedy note selection.
       const sorted = [...notes].sort((a, b) => b.value - a.value);
@@ -314,10 +387,6 @@ export function useSolzk() {
       }
 
       const r = crypto.randomUUID();
-      // The 2% transfer fee comes out of the spent value — the receiver
-      // gets the net amount, the pool's accounting stays exact.
-      const fee = Math.ceil((amount * 200) / 10_000);
-      const net = amount - fee;
       const receiverNote = await sealNoteFor(receiver, {
         value: net,
         memo,
@@ -347,9 +416,10 @@ export function useSolzk() {
           changeNote ?? { ephemeral: "none", nonce: "none", ciphertext: "none" },
         changeCommitment,
         proof,
+        feeInNote: opts?.feeInNote === true,
       });
     },
-    [address, balance, notes, sendPrivateMut],
+    [address, balance, notes, sendPrivateMut, serverWallet],
   );
 
   /** Select notes and produce nullifiers for a shielded spend of `amount`. */
@@ -373,6 +443,76 @@ export function useSolzk() {
       return { nullifiers, selected, acc };
     },
     [notes],
+  );
+
+  /** Burn SOLZK from your notes to unlock a permanent fee-discount tier. */
+  const burnForTier = useCallback(
+    async (amountTokens: number) => {
+      if (!address || !spendKeyRef.current) throw new Error("Wallet locked");
+      const { nullifiers } = await buildSpend(amountTokens);
+      const statement = `burn:${address}:${amountTokens}:${nullifiers.join(",")}`;
+      const { proof } = await buildProof(statement);
+      const res = await burnForTierMut({ amountTokens, nullifiers, proof });
+      refreshNotes();
+      return res as {
+        burnedTokens: number;
+        tierLabel: string;
+        discountBps: number;
+        signature: string;
+      };
+    },
+    [address, buildSpend, burnForTierMut, refreshNotes],
+  );
+
+  /**
+   * Redeem — the private exit. Burn notes, receive SOL from the protocol
+   * liquidity reserve at the exit rate; the tokens leave the supply forever.
+   */
+  const redeemTokens = useCallback(
+    async (amountTokens: number) => {
+      if (!address || !spendKeyRef.current) throw new Error("Wallet locked");
+      const { nullifiers } = await buildSpend(amountTokens);
+      const statement = `redeem:${address}:${amountTokens}:${nullifiers.join(",")}`;
+      const { proof } = await buildProof(statement);
+      const res = await redeemMut({ amountTokens, nullifiers, proof });
+      refreshNotes();
+      return res as {
+        netLamports: number;
+        feeLamports: number;
+        signature: string;
+        slot: number;
+      };
+    },
+    [address, buildSpend, redeemMut, refreshNotes],
+  );
+
+  /**
+   * Read-only scan: trial-decrypt the whole pool with someone else's
+   * address (their incoming view key, in this devnet build). Returns what
+   * they hold — values and memos — without any spend authority.
+   */
+  const scanAddress = useCallback(
+    async (addr: string) => {
+      const out: {
+        commitment: string;
+        value: number;
+        memo: string;
+        slot: number;
+      }[] = [];
+      for (const n of spendableNotes?.notes ?? []) {
+        const opened = await tryUnsealNote(addr, n.sealed);
+        if (opened) {
+          out.push({
+            commitment: n.commitment,
+            value: opened.value,
+            memo: opened.memo,
+            slot: n.slot,
+          });
+        }
+      }
+      return out;
+    },
+    [spendableNotes],
   );
 
   /** Deposit SOLZK into the vault — like adding liquidity to a pool. */
@@ -455,15 +595,20 @@ export function useSolzk() {
     registerOnChain,
     topUpFaucet,
     sendPrivate,
+    burnForTier,
+    redeemTokens,
     depositToVault,
     claimVaultFees,
     withdrawFromVault,
     buildSpend,
+    scanAddress,
     // shielded state
     balance,
     notes,
     scanning,
     refreshNotes,
+    viewKeys,
+    tagMatches,
     confirmationsRequired: CONFIRMATIONS_REQUIRED,
     slotSeconds: SLOT_SECONDS,
     progressToSellout,

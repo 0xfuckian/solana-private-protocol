@@ -264,7 +264,9 @@ export async function nullifierFor(
   return sha256Hex(`solzk-nullifier:${commitment}:${spendKeyHex}`);
 }
 
-/** Sealed-note ciphertext size: 512 bytes → the 934-byte mint envelope. */
+/**
+ * Sealed-note ciphertext size: 512 bytes → the 934-byte mint envelope.
+ */
 export const NOTE_CIPHERTEXT_BYTES = 512;
 /** Plaintext is space-padded so the ciphertext lands exactly on the size. */
 const NOTE_PLAINTEXT_BYTES = NOTE_CIPHERTEXT_BYTES - 16; // AES-GCM tag
@@ -275,19 +277,79 @@ export interface SealedNote {
   ciphertext: string; // b64 AES-GCM(JSON{value, memo, r}) — fixed length
 }
 
+// ---------------------------------------------------------------------------
+// View keys and 1-byte view tags
+// ---------------------------------------------------------------------------
+
+/**
+ * Incoming view key: scans the pool and decrypts incoming notes WITHOUT any
+ * spend authority — the key an auditor or accounting tool holds.
+ */
+export async function incomingViewKeyFromSeedHex(
+  seedHex: string,
+): Promise<string> {
+  return sha256Hex("solzk-ivk-v1:" + seedHex);
+}
+
+/**
+ * Outgoing view key: reveals the memos of notes you send, nothing more.
+ */
+export async function outgoingViewKeyFromSeedHex(
+  seedHex: string,
+): Promise<string> {
+  return sha256Hex("solzk-ovk-v1:" + seedHex);
+}
+
+/**
+ * 1-byte view tag, exactly as in Sapling: the sender embeds a byte derived
+ * from the receiver's secret scanning material, so the receiver can skip
+ * ~255 of every 256 foreign notes without a trial decrypt. Here the tag is
+ * the first byte of SHA-256(tag-domain ‖ receiver ‖ ephemeral) — the
+ * receiver recomputes it from public data plus their own address.
+ */
+export async function viewTagFor(
+  receiverAddress: string,
+  ephemeralB64: string,
+): Promise<number> {
+  const hex = await sha256Hex(
+    `solzk-vtag:${receiverAddress}:${ephemeralB64}`,
+  );
+  return parseInt(hex.slice(0, 2), 16);
+}
+
+/** Cheap scan-side check: does this note's tag match mine? */
+export async function ephemeralMatchesTag(
+  myAddress: string,
+  ephemeralB64: string,
+): Promise<boolean> {
+  try {
+    const tag = await viewTagFor(myAddress, ephemeralB64);
+    const first = atob(ephemeralB64).charCodeAt(0);
+    return first === tag;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Encrypt a note so only the holder of the receiver address can decrypt.
  * The plaintext is space-padded so the ciphertext is always exactly 512
- * bytes — uniform envelope sizes are what stop length from leaking.
+ * bytes — uniform envelope sizes are what stop length from leaking. The
+ * first ephemeral byte is overwritten with the receiver's 1-byte view tag.
  */
 export async function sealNoteFor(
   receiverAddress: string,
   note: { value: number; memo: string; r: string },
 ): Promise<SealedNote> {
   const eph = crypto.getRandomValues(new Uint8Array(16));
+  const ephB64 = bufToB64(eph.buffer);
+  // Embed the view tag: the receiver's scanner matches this byte first.
+  const tag = await viewTagFor(receiverAddress, ephB64);
+  eph[0] = tag;
+  const taggedB64 = bufToB64(eph.buffer);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const keyMaterial = await sha256Hex(
-    `solzk-view:${receiverAddress}:${bufToB64(eph.buffer)}`,
+    `solzk-view:${receiverAddress}:${taggedB64}`,
   );
   const keyBytes = hexToBuf(keyMaterial);
   const key = await crypto.subtle.importKey(
@@ -308,7 +370,7 @@ export async function sealNoteFor(
     textEncoder.encode(padded),
   );
   return {
-    ephemeral: bufToB64(eph.buffer),
+    ephemeral: taggedB64,
     nonce: bufToB64(iv.buffer),
     ciphertext: bufToB64(ct),
   };

@@ -9,6 +9,7 @@ import {
   MINT_FEE_BPS,
   MARKET_FEE_BPS,
   TICKER,
+  TOTAL_SUPPLY,
   formatTokenAmount,
   lamportsToSol,
 } from "@/lib/protocol";
@@ -18,6 +19,7 @@ import {
   ArrowUpFromLine,
   Clock3,
   Droplets,
+  Flame,
   HandCoins,
   Loader2,
   ShieldCheck,
@@ -307,8 +309,69 @@ function LiquidityPanel() {
           value={`${formatTokenAmount(pool?.depositedTokens ?? 0)} ${TICKER}`}
           sub={`${formatTokenAmount(pool?.totalShares ?? 0)} shares outstanding`}
         />
+        <Stat
+          label="Treasury fee vault"
+          value={`${lamportsToSol(slk.protocol?.treasuryLamports ?? 0)} SOL`}
+          accent
+          sub="half of every fee — the keeper burns it"
+        />
+        <Stat
+          label="Burned supply"
+          value={`${formatTokenAmount(slk.protocol?.burnedTokens ?? 0)} ${TICKER}`}
+          sub={`${(((slk.protocol?.burnedTokens ?? 0) / TOTAL_SUPPLY) * 100).toFixed(2)}% of total, gone forever`}
+        />
       </div>
     </div>
+  );
+}
+
+function KeeperCard() {
+  const slk = useSolzk();
+  const runBuyback = useMutation(api.protocol.executeBuyback);
+  const [busy, setBusy] = useState(false);
+  const lastAt = slk.protocol?.lastBuybackAt;
+
+  return (
+    <Card className="border-dashed">
+      <CardContent className="flex flex-col items-start justify-between gap-3 p-5 sm:flex-row sm:items-center">
+        <div>
+          <p className="flex items-center gap-2 text-sm font-semibold">
+            <Flame className="size-4 text-primary" /> Fee buyback-and-burn
+            (keeper)
+          </p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            The keeper sweeps the treasury fee vault, buys {TICKER} out of
+            protocol liquidity and burns it — supply only shrinks. Public and
+            permissionless: on mainnet it routes through Jupiter; here the
+            vault is the counterparty.{lastAt ? ` Last sweep ${new Date(lastAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}.` : ""}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              const r = await runBuyback({});
+              toast.success(
+                `Buyback executed: ${formatTokenAmount(r.tokensBurned)} ${TICKER} burned for ${lamportsToSol(r.lamportsSpent)} SOL.`,
+              );
+            } catch (e) {
+              toast.error(e instanceof Error ? e.message : "Buyback failed");
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? (
+            <Loader2 className="mr-1.5 size-4 animate-spin" />
+          ) : (
+            <Flame className="mr-1.5 size-4" />
+          )}
+          Run the sweep
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -330,6 +393,7 @@ export default function Vault() {
             </p>
           </div>
           <LiquidityPanel />
+          <KeeperCard />
         </PageShell>
       </SiteLayout>
     </RequireAuth>

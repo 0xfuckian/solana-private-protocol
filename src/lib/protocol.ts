@@ -185,3 +185,143 @@ export function lotsRemainingFor(tier: RateTier, lotsUsed: number): number {
 
 /** Single-mint cap in lots, derived from MAX_MINT_PER_TX. */
 export const MAX_LOTS_PER_TX = MAX_MINT_PER_TX / LOT_SIZE; // 1,000
+
+// ---------------------------------------------------------------------------
+// Fee-in-note relayer
+// ---------------------------------------------------------------------------
+
+/**
+ * Flat relayer fee for fee-in-note transfers, paid in SOLZK out of the spent
+ * value. With fee-in-note the sender needs no faucet SOL at all: the note
+ * itself pays the relayer, and the protocol covers the chain fee from the
+ * vault — the mechanism that makes a wallet with zero SOL still spendable.
+ */
+export const RELAYER_FEE_NOTE_TOKENS = 25;
+
+// ---------------------------------------------------------------------------
+// Burn-to-discount fee tiers
+// ---------------------------------------------------------------------------
+
+/** Burning SOLZK sets a public fee tier — a permanent discount on transfer fees. */
+export interface DiscountTier {
+  label: string;
+  minBurned: number;
+  discountBps: number;
+}
+
+export const DISCOUNT_TIERS: DiscountTier[] = [
+  { label: "Obsidian", minBurned: 100_000, discountBps: 7_500 },
+  { label: "Onyx", minBurned: 10_000, discountBps: 5_000 },
+  { label: "Ember", minBurned: 1_000, discountBps: 2_500 },
+  { label: "Standard", minBurned: 0, discountBps: 0 },
+];
+
+/** The highest tier the caller has unlocked (cumulative burned tokens). */
+export function discountTierForBurned(burned: number): DiscountTier {
+  for (const t of DISCOUNT_TIERS) {
+    if (burned >= t.minBurned) return t;
+  }
+  return DISCOUNT_TIERS[DISCOUNT_TIERS.length - 1];
+}
+
+/** The next tier above the caller's current one, or null at the top. */
+export function nextDiscountTier(burned: number): DiscountTier | null {
+  const idx = DISCOUNT_TIERS.findIndex((t) => burned >= t.minBurned);
+  return idx > 0 ? DISCOUNT_TIERS[idx - 1] : null;
+}
+
+/** Transfer fee in tokens at a given discount tier. */
+export function transferFeeTokens(amount: number, discountBps: number): number {
+  return Math.ceil(
+    (amount * MARKET_FEE_BPS * (10_000 - discountBps)) / 10_000 / 10_000,
+  );
+}
+
+/** Supply that still exists after keeper buybacks, tier burns and exits. */
+export function effectiveSupply(
+  totalSupply: number,
+  burnedTokens: number,
+): number {
+  return Math.max(0, totalSupply - burnedTokens);
+}
+
+// ---------------------------------------------------------------------------
+// Redeem — the private exit (private swap of SOLZK for SOL)
+// ---------------------------------------------------------------------------
+
+/**
+ * Exit rate: tokens burn against protocol liquidity at the open mint rate.
+ * Every redemption is deflationary — the tokens are burned, the SOL leaves
+ * the 95% liquidity reserve, and the ledger sees only a burn plus a payout.
+ */
+export const REDEEM_LAMPORTS_PER_TOKEN = Math.floor(
+  OPEN_RATE_LAMPORTS / LOT_SIZE,
+);
+
+// ---------------------------------------------------------------------------
+// Pay links — payment requests encoded in the URL #fragment
+// ---------------------------------------------------------------------------
+
+/**
+ * A pay link carries { to, amount, memo } in the URL fragment, which never
+ * reaches a server. Format mirrors the envelope: a versioned prefix plus
+ * base64url JSON, so a link is self-describing and forward-compatible.
+ */
+export const PAY_LINK_PREFIX = "SOLZK-PAY|v1|";
+
+export interface PayLinkPayload {
+  to: string;
+  amount: number;
+  memo?: string;
+}
+
+function bytesToB64Url(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function b64UrlToBytes(s: string): Uint8Array {
+  const clean = s.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = clean.length % 4 === 0 ? "" : "=".repeat(4 - (clean.length % 4));
+  const bin = atob(clean + pad);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+let payEncoder: TextEncoder | null = null;
+let payDecoder: TextDecoder | null = null;
+
+export function encodePayLink(p: PayLinkPayload): string {
+  payEncoder ??= new TextEncoder();
+  const json = JSON.stringify({ t: p.to, a: p.amount, m: p.memo ?? "" });
+  return PAY_LINK_PREFIX + bytesToB64Url(payEncoder.encode(json));
+}
+
+export function decodePayLink(fragment: string): PayLinkPayload | null {
+  try {
+    payDecoder ??= new TextDecoder();
+    const raw = fragment.trim();
+    if (!raw.startsWith(PAY_LINK_PREFIX)) return null;
+    const json = payDecoder.decode(
+      b64UrlToBytes(raw.slice(PAY_LINK_PREFIX.length)),
+    );
+    const obj = JSON.parse(json) as { t?: string; a?: number; m?: string };
+    if (typeof obj.t !== "string" || obj.t.length !== ADDRESS_LEN) return null;
+    if (typeof obj.a !== "number" || !Number.isFinite(obj.a) || obj.a <= 0)
+      return null;
+    return {
+      to: obj.t,
+      amount: obj.a,
+      memo: typeof obj.m === "string" && obj.m ? obj.m : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function payLinkUrl(p: PayLinkPayload): string {
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  return `${origin}/pay#${encodePayLink(p)}`;
+}

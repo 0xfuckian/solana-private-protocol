@@ -7,6 +7,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { api } from "@/convex/_generated/api";
 import {
   MARKET_FEE_BPS,
+  REDEEM_LAMPORTS_PER_TOKEN,
   TICKER,
   TOTAL_SUPPLY,
   formatTokenAmount,
@@ -18,13 +19,16 @@ import {
   ArrowDownUp,
   CircleCheck,
   Clock,
+  ExternalLink,
   FlaskConical,
+  Flame,
   Loader2,
   Lock,
   ShieldCheck,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
 import { useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 
@@ -180,6 +184,102 @@ function OrderTicket() {
             )}
             Place {side} order
           </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RedeemCard() {
+  const slk = useSolzk();
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [last, setLast] = useState<{ netLamports: number; signature: string } | null>(null);
+
+  const amountNum = Number(amount) || 0;
+  const gross = Math.floor(amountNum * REDEEM_LAMPORTS_PER_TOKEN);
+  const fee = Math.ceil((gross * MARKET_FEE_BPS) / 10_000);
+  const net = gross - fee;
+
+  return (
+    <Card>
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold">Redeem to SOL</h2>
+          <Flame className="size-4 text-primary" />
+        </div>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          The private exit: burn notes, receive SOL from the protocol
+          liquidity reserve at the exit rate. The ledger sees a burn and a
+          payout — never your balance, never a link.
+        </p>
+        <div className="mt-4 space-y-3">
+          <Input
+            type="number"
+            placeholder={`Amount (${TICKER})`}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="font-mono-tabular"
+          />
+          <div className="rounded-lg border border-border/60 bg-background px-3 py-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Exit rate</span>
+              <span className="font-mono-tabular">
+                {lamportsToSol(REDEEM_LAMPORTS_PER_TOKEN)} SOL per {TICKER}
+              </span>
+            </div>
+            <div className="mt-1 flex justify-between">
+              <span className="text-muted-foreground">
+                Exit fee ({MARKET_FEE_BPS / 100}%) — half to the vault
+              </span>
+              <span className="font-mono-tabular">{lamportsToSol(fee)} SOL</span>
+            </div>
+            <div className="mt-1 flex justify-between border-t border-border/50 pt-1">
+              <span className="text-muted-foreground">You receive</span>
+              <span className="font-mono-tabular text-primary">
+                {lamportsToSol(net)} SOL
+              </span>
+            </div>
+          </div>
+          <Button
+            className="w-full bg-sol-gradient font-semibold text-[#04101a] hover:opacity-90"
+            disabled={busy || amountNum <= 0 || amountNum > slk.balance}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const r = await slk.redeemTokens(amountNum);
+                setLast({ netLamports: r.netLamports, signature: r.signature });
+                toast.success(
+                  `Redeemed — ${lamportsToSol(r.netLamports)} SOL sent to your wallet. Tokens burned.`,
+                );
+                setAmount("");
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Redeem failed");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? (
+              <Loader2 className="mr-2 size-4 animate-spin" />
+            ) : (
+              <Flame className="mr-2 size-4" />
+            )}
+            Burn {amountNum > 0 ? formatTokenAmount(amountNum) : ""} {TICKER} → SOL
+          </Button>
+          {last && (
+            <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              <ExternalLink className="size-3" /> Last redemption in the burn
+              feed —
+              <Link to={`/explorer?tx=${last.signature}`} className="text-primary hover:underline">
+                view the receipt
+              </Link>
+            </p>
+          )}
+          <p className="text-[11px] leading-4 text-muted-foreground">
+            Exits are deflationary: every redeemed {TICKER} leaves the supply
+            forever, and the SOL comes out of the 95% mint liquidity reserve.
+          </p>
         </div>
       </CardContent>
     </Card>
@@ -377,8 +477,9 @@ function MarketInner() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-      <div>
+      <div className="space-y-6">
         <OrderTicket />
+        <RedeemCard />
       </div>
 
       <div className="space-y-6">

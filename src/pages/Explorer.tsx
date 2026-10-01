@@ -19,6 +19,7 @@ import {
   Boxes,
   FileText,
   Fingerprint,
+  Flame,
   Search,
   ShieldCheck,
 } from "lucide-react";
@@ -33,6 +34,17 @@ interface EnvelopeListItem {
   slot: number;
   payloadSize: number;
   feeLamports: number;
+  feeInNote?: boolean;
+  createdAt: number;
+}
+
+interface BurnRow {
+  _id: string;
+  kind: string;
+  tokensBurned: number;
+  lamportsSpent: number;
+  signature: string;
+  slot: number;
   createdAt: number;
 }
 
@@ -53,6 +65,9 @@ export default function Explorer() {
   const state = useQuery(api.protocol.getState);
   const envelopes = useQuery(api.protocol.listEnvelopes, { limit: 50 }) as
     | EnvelopeListItem[]
+    | undefined;
+  const burns = useQuery(api.protocol.listBurns, { limit: 10 }) as
+    | BurnRow[]
     | undefined;
   const detail = useQuery(
     api.protocol.getEnvelope,
@@ -127,6 +142,40 @@ export default function Explorer() {
         />
       </div>
 
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat
+          label="Effective supply"
+          value={
+            state
+              ? formatTokenAmount(
+                  TOTAL_SUPPLY - (state.burnedTokens ?? 0),
+                )
+              : "—"
+          }
+          accent
+          sub={`${TICKER} still in existence`}
+        />
+        <Stat
+          label="Burned"
+          value={state ? formatTokenAmount(state.burnedTokens ?? 0) : "—"}
+          sub="buybacks + tier burns + exits"
+        />
+        <Stat
+          label="Treasury fee vault"
+          value={
+            state ? `${lamportsToSol(state.treasuryLamports)} SOL` : "—"
+          }
+          sub="half of every fee, awaiting the buyback"
+        />
+        <Stat
+          label="Relayer fee vault"
+          value={
+            state ? `${formatTokenAmount(state.relayerFeesTokens ?? 0)} ${TICKER}` : "—"
+          }
+          sub="in-note fees, public on chain"
+        />
+      </div>
+
       {detail?.envelope ? (
         <Card className="border-sol-gradient mb-8">
           <CardContent className="p-6">
@@ -181,7 +230,11 @@ export default function Explorer() {
               <Stat
                 label="Relayer fee"
                 value={`${lamportsToSol(detail.envelope.feeLamports)} SOL`}
-                sub="paid from the relayer's own coins"
+                sub={
+                  detail.envelope.feeInNote
+                    ? "relayer paid from the note itself — sender spent no SOL"
+                    : "paid from the relayer's own coins"
+                }
               />
               <Stat
                 label="Proof"
@@ -278,6 +331,7 @@ export default function Explorer() {
                           }`}
                         >
                           {e.kind}
+                          {e.feeInNote ? " · in-note" : ""}
                         </span>
                       </td>
                       <td className="px-6 py-3">{e.slot.toLocaleString()}</td>
@@ -300,6 +354,83 @@ export default function Explorer() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardContent className="p-0">
+          <div className="flex items-center justify-between px-6 py-4">
+            <h2 className="flex items-center gap-2 text-base font-semibold">
+              <Flame className="size-4 text-primary" /> Burn feed
+            </h2>
+            <GradientBadge>supply only shrinks</GradientBadge>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-y border-border/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                  <th className="px-6 py-3 font-medium">Kind</th>
+                  <th className="px-6 py-3 font-medium">Burned</th>
+                  <th className="px-6 py-3 font-medium">SOL leg</th>
+                  <th className="px-6 py-3 font-medium">Slot</th>
+                  <th className="px-6 py-3 font-medium">Signature</th>
+                  <th className="px-6 py-3 font-medium">Time</th>
+                </tr>
+              </thead>
+              <tbody className="font-mono-tabular">
+                {burns === undefined ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-6 text-center text-muted-foreground">
+                      Loading…
+                    </td>
+                  </tr>
+                ) : burns.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-6 text-center text-muted-foreground">
+                      No burns yet. The keeper sweeps the treasury fee vault
+                      from the Vault page; exits burn from the Market.
+                    </td>
+                  </tr>
+                ) : (
+                  burns.map((b) => (
+                    <tr
+                      key={b._id}
+                      className="border-b border-border/40 transition-colors hover:bg-secondary/40"
+                    >
+                      <td className="px-6 py-3">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize ${
+                            b.kind === "buyback"
+                              ? "bg-primary/10 text-primary"
+                              : b.kind === "redeem"
+                                ? "bg-[#9945FF]/15 text-[#c9b4ff]"
+                                : "bg-secondary text-foreground"
+                          }`}
+                        >
+                          {b.kind}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3">
+                        {formatTokenAmount(b.tokensBurned)} {TICKER}
+                      </td>
+                      <td className="px-6 py-3">
+                        {b.lamportsSpent > 0
+                          ? `${lamportsToSol(b.lamportsSpent)} SOL`
+                          : "—"}
+                      </td>
+                      <td className="px-6 py-3">{b.slot.toLocaleString()}</td>
+                      <td className="px-6 py-3 text-xs text-muted-foreground">
+                        {shortHash(b.signature, 10, 6)}
+                      </td>
+                      <td className="px-6 py-3 text-muted-foreground">
+                        {fmtTime(b.createdAt)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         <Card>
           <CardContent className="p-6">
@@ -312,6 +443,7 @@ export default function Explorer() {
               <li>Its size in bytes — uniform, so length leaks nothing</li>
               <li>Opaque nullifiers and commitments</li>
               <li>Mint amounts and ticker (supply must be auditable)</li>
+              <li>Burns: buybacks, tier burns and exits, in full</li>
             </ul>
           </CardContent>
         </Card>

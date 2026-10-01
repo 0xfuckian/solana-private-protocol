@@ -17,6 +17,7 @@ const Mint = lazy(() => import("./pages/Mint.tsx"));
 const Market = lazy(() => import("./pages/Market.tsx"));
 const Vault = lazy(() => import("./pages/Vault.tsx"));
 const Explorer = lazy(() => import("./pages/Explorer.tsx"));
+const Pay = lazy(() => import("./pages/Pay.tsx"));
 const Protocol = lazy(() => import("./pages/Protocol.tsx"));
 const Whitelist = lazy(() => import("./pages/Whitelist.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
@@ -164,6 +165,14 @@ createRoot(document.getElementById("root")!).render(
                 }
               />
               <Route path="/explorer" element={<Explorer />} />
+              <Route
+                path="/pay"
+                element={
+                  <RequireAuth>
+                    <Pay />
+                  </RequireAuth>
+                }
+              />
               <Route path="/protocol" element={<Protocol />} />
               <Route path="/whitelist" element={<Whitelist />} />
               <Route path="*" element={<NotFound />} />

@@ -19,12 +19,16 @@ import {
   ENVELOPE_MINT_BYTES,
   ENVELOPE_TRANSFER_BYTES,
   LOT_SIZE,
+  MARKET_FEE_BPS,
   MAX_LOTS_PER_TX,
   MINT_FEE_BPS,
   OPEN_MAX_LOTS,
   OPEN_RATE_LAMPORTS,
   RELAYER_FEE_LAMPORTS,
+  RELAYER_FEE_NOTE_TOKENS,
   type RateTier,
+  discountTierForBurned,
+  effectiveSupply,
   hexHashOf,
 } from "../lib/protocol";
 
@@ -137,6 +141,14 @@ export const getState = query({
     return {
       ticker: state.ticker,
       totalSupply: state.totalSupply,
+      // Supply that still exists after buybacks, tier burns and exits.
+      burnedTokens: state.burnedTokens ?? 0,
+      effectiveSupply: effectiveSupply(
+        state.totalSupply,
+        state.burnedTokens ?? 0,
+      ),
+      relayerFeesTokens: state.relayerFeesTokens ?? 0,
+      lastBuybackAt: state.lastBuybackAt,
       lotSize: state.lotSize,
       mintedTokens: state.mintedTokens,
       mintOpen: state.mintOpen,
@@ -182,6 +194,11 @@ export const getMyWallet = query({
       lotsMinted: wallet.lotsMinted,
       approved,
       mintedTokens: wallet.lotsMinted * state.lotSize,
+      // Burn-to-discount tier: cumulative burned tokens set a public,
+      // permanent discount on transfer fees.
+      burnedTokens: wallet.burnedTokens ?? 0,
+      tierLabel: discountTierForBurned(wallet.burnedTokens ?? 0).label,
+      discountBps: discountTierForBurned(wallet.burnedTokens ?? 0).discountBps,
       createdAt: wallet.createdAt,
     };
   },
@@ -504,6 +521,9 @@ export const sendPrivate = mutation({
     }),
     changeCommitment: v.string(),
     proof: v.string(),
+    // Fee-in-note: the relayer is paid out of the spent value in SOLZK and
+    // the protocol covers the chain fee, so the sender needs no SOL at all.
+    feeInNote: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -549,8 +569,38 @@ export const sendPrivate = mutation({
       throw new Error("Proof rejected: it does not commit to these bytes.");
     }
 
-    // 2% protocol fee on every transfer, routed like every other fee.
-    const transferFee = Math.ceil((args.amount * 200) / 10_000);
+    // Protocol fee on every transfer, discounted by the sender's burn tier.
+    // The tier is public on-chain state: burned tokens → tier_id → discount.
+    const discount = discountTierForBurned(wallet.burnedTokens ?? 0);
+    const transferFee = Math.ceil(
+      (args.amount * MARKET_FEE_BPS * (10_000 - discount.discountBps)) /
+        10_000 /
+        10_000,
+    );
+    if (transferFee >= args.amount) {
+      throw new Error(
+        "Amount too small — it cannot cover the protocol fee.",
+      );
+    }
+
+    const feeInNote = args.feeInNote === true;
+    let relayerFeeTokens = 0;
+    if (feeInNote) {
+      // The note pays the relayer a flat SOLZK fee; the protocol covers the
+      // chain fee. A wallet with zero SOL stays fully spendable.
+      relayerFeeTokens = RELAYER_FEE_NOTE_TOKENS;
+      if (args.amount - transferFee - relayerFeeTokens <= 0) {
+        throw new Error(
+          `Amount too small — fee-in-note needs room for the ${RELAYER_FEE_NOTE_TOKENS} SOLZK relayer fee on top of the protocol fee.`,
+        );
+      }
+    } else if (wallet.fundingLamports < RELAYER_FEE_LAMPORTS) {
+      throw new Error(
+        "Insufficient SOL for the network fee — enable fee-in-note to pay the relayer from the note itself.",
+      );
+    }
+
+    // 2% (tier-discounted) protocol fee, routed like every other fee.
     const pool = await ensureVaultPool(ctx);
     await routeFee(ctx, state, pool, transferFee);
 
@@ -567,6 +617,7 @@ export const sendPrivate = mutation({
       feeLamports: transferFee,
       payload: buildEnvelope("transfer", args.sealedNote),
       proof: args.proof,
+      feeInNote,
       createdAt: Date.now(),
     });
 
@@ -588,7 +639,20 @@ export const sendPrivate = mutation({
       });
     }
 
-    return { signature, slot, envelopeId };
+    // In-note relayer fees land in the public fee vault — visible in the
+    // explorer, claimable by whoever operates relayers on mainnet.
+    if (relayerFeeTokens > 0) {
+      await ctx.db.patch(state._id, {
+        relayerFeesTokens: (state.relayerFeesTokens ?? 0) + relayerFeeTokens,
+      });
+    }
+    if (!feeInNote) {
+      await ctx.db.patch(wallet._id, {
+        fundingLamports: wallet.fundingLamports - RELAYER_FEE_LAMPORTS,
+      });
+    }
+
+    return { signature, slot, envelopeId, transferFee, relayerFeeTokens };
   },
 });
 
@@ -658,6 +722,212 @@ export const getEnvelope = query({
     if (!envelope) return null;
     const notesCount = (await ctx.db.query("notes").collect()).length;
     return { envelope, notesCount };
+  },
+});
+
+/**
+ * Fee buyback-and-burn — the keeper job. The treasury fee vault (half of
+ * every mint, transfer and trade fee) is swept: the SOL buys SOLZK out of
+ * the protocol liquidity reserve at the open rate and the tokens are
+ * burned, shrinking supply. On mainnet this routes through Jupiter; here
+ * the vault itself is the counterparty, which keeps the demo coherent.
+ *
+ * Public and permissionless — anyone can run the keeper sweep.
+ */
+export const executeBuyback = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const state = await ensureProtocolState(ctx);
+    const spendable = Math.min(state.treasuryLamports, state.liquidityLamports);
+    const lots = Math.floor(spendable / OPEN_RATE_LAMPORTS);
+    if (lots < 1) {
+      throw new Error(
+        "Nothing to buy back yet — the fee vault needs at least one lot's worth of fees.",
+      );
+    }
+    const tokens = lots * LOT_SIZE;
+    const spend = lots * OPEN_RATE_LAMPORTS;
+
+    await ctx.db.patch(state._id, {
+      treasuryLamports: state.treasuryLamports - spend,
+      liquidityLamports: state.liquidityLamports - spend,
+      burnedTokens: (state.burnedTokens ?? 0) + tokens,
+      lastBuybackAt: Date.now(),
+    });
+
+    const signature = hexHashOf(`buyback:${Date.now()}:${randomSlot()}`);
+    await ctx.db.insert("burnEvents", {
+      kind: "buyback",
+      tokensBurned: tokens,
+      lamportsSpent: spend,
+      signature,
+      slot: nowSlot(state.genesisMs),
+      createdAt: Date.now(),
+    });
+    return { tokensBurned: tokens, lamportsSpent: spend, signature };
+  },
+});
+
+/**
+ * Burn-to-discount: burn SOLZK from your shielded notes to unlock a
+ * permanent, public fee tier. The burned tokens leave the supply forever;
+ * the discount applies to every future transfer fee automatically.
+ */
+export const burnForTier = mutation({
+  args: {
+    amountTokens: v.number(),
+    nullifiers: v.array(v.string()),
+    proof: v.string(),
+  },
+  handler: async (ctx, { amountTokens, nullifiers, proof }) => {
+    const userId = await requireUserId(ctx);
+    const wallet = await getWalletForUserOrThrow(ctx, userId);
+    const state = await ensureProtocolState(ctx);
+
+    if (!state.mintOpen && !state.marketOpen) {
+      throw new Error("Protocol is not accepting envelopes yet.");
+    }
+    if (!Number.isInteger(amountTokens) || amountTokens <= 0) {
+      throw new Error("Burn amount must be a positive integer.");
+    }
+    for (const n of nullifiers) {
+      const existing = await ctx.db
+        .query("nullifiers")
+        .withIndex("by_value", (q) => q.eq("value", n))
+        .first();
+      if (existing)
+        throw new Error("Nullifier already seen — double spend blocked.");
+    }
+    const statement = `burn:${wallet.address}:${amountTokens}:${nullifiers.join(",")}`;
+    const expected = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
+    if (expected !== proof) {
+      throw new Error("Proof rejected: it does not commit to these bytes.");
+    }
+
+    const slot = nowSlot(state.genesisMs);
+    for (const n of nullifiers) {
+      await ctx.db.insert("nullifiers", { value: n, slot });
+    }
+
+    const walletBurned = (wallet.burnedTokens ?? 0) + amountTokens;
+    await ctx.db.patch(wallet._id, { burnedTokens: walletBurned });
+    await ctx.db.patch(state._id, {
+      burnedTokens: (state.burnedTokens ?? 0) + amountTokens,
+    });
+
+    const signature = hexHashOf(
+      `burn:${wallet.address}:${Date.now()}:${randomSlot()}`,
+    );
+    await ctx.db.insert("burnEvents", {
+      kind: "tier",
+      tokensBurned: amountTokens,
+      lamportsSpent: 0,
+      signature,
+      slot,
+      createdAt: Date.now(),
+    });
+
+    const tier = discountTierForBurned(walletBurned);
+    return {
+      burnedTokens: walletBurned,
+      tierLabel: tier.label,
+      discountBps: tier.discountBps,
+      signature,
+    };
+  },
+});
+
+/**
+ * Redeem — the private exit (private swap to SOL). Notes are spent and the
+ * value burns against the 95% liquidity reserve at the exit rate: the SOL
+ * goes to your ordinary wallet, the tokens leave the supply forever. The
+ * ledger sees a burn and a payout — never a balance, never a link.
+ */
+export const redeem = mutation({
+  args: {
+    amountTokens: v.number(),
+    nullifiers: v.array(v.string()),
+    proof: v.string(),
+  },
+  handler: async (ctx, { amountTokens, nullifiers, proof }) => {
+    const userId = await requireUserId(ctx);
+    const wallet = await getWalletForUserOrThrow(ctx, userId);
+    const state = await ensureProtocolState(ctx);
+
+    if (!state.mintOpen && !state.marketOpen) {
+      throw new Error("Protocol is not accepting envelopes yet.");
+    }
+    if (!Number.isInteger(amountTokens) || amountTokens <= 0) {
+      throw new Error("Redeem amount must be a positive integer.");
+    }
+    for (const n of nullifiers) {
+      const existing = await ctx.db
+        .query("nullifiers")
+        .withIndex("by_value", (q) => q.eq("value", n))
+        .first();
+      if (existing)
+        throw new Error("Nullifier already seen — double spend blocked.");
+    }
+    const statement = `redeem:${wallet.address}:${amountTokens}:${nullifiers.join(",")}`;
+    const expected = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
+    if (expected !== proof) {
+      throw new Error("Proof rejected: it does not commit to these bytes.");
+    }
+
+    const gross = Math.floor((amountTokens * OPEN_RATE_LAMPORTS) / LOT_SIZE);
+    const fee = Math.ceil((gross * MARKET_FEE_BPS) / 10_000);
+    const net = gross - fee;
+    if (net <= 0) {
+      throw new Error("Amount too small — it cannot cover the exit fee.");
+    }
+    if (state.liquidityLamports < gross) {
+      throw new Error(
+        "Protocol liquidity cannot cover that redemption right now.",
+      );
+    }
+
+    const slot = nowSlot(state.genesisMs);
+    for (const n of nullifiers) {
+      await ctx.db.insert("nullifiers", { value: n, slot });
+    }
+
+    // The exit fee routes exactly like every other fee: half vault, half
+    // treasury. The rest of the gross leaves the liquidity reserve.
+    const pool = await ensureVaultPool(ctx);
+    await routeFee(ctx, state, pool, fee);
+    await ctx.db.patch(state._id, {
+      liquidityLamports: state.liquidityLamports - gross,
+      burnedTokens: (state.burnedTokens ?? 0) + amountTokens,
+    });
+    await ctx.db.patch(wallet._id, {
+      fundingLamports: wallet.fundingLamports + net,
+    });
+
+    const signature = hexHashOf(
+      `redeem:${wallet.address}:${Date.now()}:${randomSlot()}`,
+    );
+    await ctx.db.insert("burnEvents", {
+      kind: "redeem",
+      tokensBurned: amountTokens,
+      lamportsSpent: net,
+      signature,
+      slot,
+      createdAt: Date.now(),
+    });
+    return { netLamports: net, feeLamports: fee, signature, slot };
+  },
+});
+
+/** The public burn feed: buybacks, tier burns and exits, newest first. */
+export const listBurns = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
+    await protocolStateOrDefault(ctx);
+    return ctx.db
+      .query("burnEvents")
+      .withIndex("by_created")
+      .order("desc")
+      .take(limit ?? 20);
   },
 });
 

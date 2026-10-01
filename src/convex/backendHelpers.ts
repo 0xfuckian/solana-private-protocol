@@ -62,6 +62,8 @@ export async function ensureProtocolState(
     genesisMs: Date.now(),
     treasuryLamports: 0,
     liquidityLamports: 0,
+    burnedTokens: 0,
+    relayerFeesTokens: 0,
   });
   return (await ctx.db.get(id))!;
 }
@@ -77,7 +79,24 @@ export type ProtocolStateLike = {
   genesisMs: number;
   treasuryLamports: number;
   liquidityLamports: number;
+  burnedTokens?: number;
+  relayerFeesTokens?: number;
+  lastBuybackAt?: number;
 };
+
+/** Cumulative burned supply (keeper buybacks + tier burns + exits). */
+export function stateBurnedTokens(
+  state: Pick<ProtocolStateLike, "burnedTokens">,
+): number {
+  return state.burnedTokens ?? 0;
+}
+
+/** Cumulative in-note relayer fees collected in the public fee vault. */
+export function stateRelayerFees(
+  state: Pick<ProtocolStateLike, "relayerFeesTokens">,
+): number {
+  return state.relayerFeesTokens ?? 0;
+}
 
 export async function protocolStateOrDefault(
   ctx: QueryCtx,
@@ -94,6 +113,8 @@ export async function protocolStateOrDefault(
     genesisMs: Date.now(),
     treasuryLamports: 0,
     liquidityLamports: 0,
+    burnedTokens: 0,
+    relayerFeesTokens: 0,
   };
 }
 

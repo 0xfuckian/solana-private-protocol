@@ -54,6 +54,13 @@ const schema = defineSchema(
       // backstopping withdrawals.
       liquidityLamports: v.number(),
       liquiditySeeded: v.optional(v.boolean()),
+      // Cumulative supply burned: keeper buybacks of treasury fees, user
+      // tier burns, and exit redemptions. Effective supply = total − burned.
+      burnedTokens: v.optional(v.number()),
+      // Public relayer fee vault: flat in-note fees collected from
+      // fee-in-note transfers (the note pays the relayer, not the sender).
+      relayerFeesTokens: v.optional(v.number()),
+      lastBuybackAt: v.optional(v.number()),
     }).index("by_key", ["key"]),
 
     // One shielded wallet per app account. The address is the public shielded
@@ -65,6 +72,8 @@ const schema = defineSchema(
       fundingLamports: v.number(),
       faucetTotalLamports: v.number(),
       lotsMinted: v.number(),
+      // Cumulative tokens this wallet has burned for its fee-discount tier.
+      burnedTokens: v.optional(v.number()),
       createdAt: v.number(),
     })
       .index("by_user", ["userId"])
@@ -103,6 +112,9 @@ const schema = defineSchema(
       proof: v.string(),
       invoiceId: v.optional(v.id("invoices")),
       tradeId: v.optional(v.id("trades")),
+      // True when the transfer paid its relayer from the note itself
+      // (fee-in-note) instead of the sender's SOL balance.
+      feeInNote: v.optional(v.boolean()),
       createdAt: v.number(),
     })
       .index("by_signature", ["signature"])
@@ -200,6 +212,20 @@ const schema = defineSchema(
     })
       .index("by_seller", ["sellerWalletId"])
       .index("by_buyer", ["buyerWalletId"]),
+
+    // Public supply burns. Three kinds:
+    //  - "buyback": the keeper sweeps the treasury fee vault, buys SOLZK
+    //    from protocol liquidity and burns it (deflationary fee sink).
+    //  - "tier": a user burns tokens to unlock a permanent fee discount.
+    //  - "redeem": an exit — tokens burn against the 95% liquidity reserve.
+    burnEvents: defineTable({
+      kind: v.string(), // "buyback" | "tier" | "redeem"
+      tokensBurned: v.number(),
+      lamportsSpent: v.number(), // treasury/liquidity spent (buyback) or SOL paid out (redeem)
+      signature: v.string(),
+      slot: v.number(),
+      createdAt: v.number(),
+    }).index("by_created", ["createdAt"]),
   },
   {
     schemaValidation: false,

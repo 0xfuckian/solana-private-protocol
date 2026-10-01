@@ -29,6 +29,7 @@ const NAV = [
   { to: "/mint", label: "Mint" },
   { to: "/market", label: "Market" },
   { to: "/vault", label: "Vault" },
+  { to: "/pay", label: "Pay" },
   { to: "/explorer", label: "Explorer" },
   { to: "/protocol", label: "Protocol" },
 ];
@@ -209,6 +210,7 @@ export function SiteFooter() {
           <Link to="/mint" className="hover:text-foreground">Mint</Link>
           <Link to="/market" className="hover:text-foreground">Market</Link>
           <Link to="/vault" className="hover:text-foreground">Vault</Link>
+          <Link to="/pay" className="hover:text-foreground">Pay</Link>
           <Link to="/explorer" className="hover:text-foreground">Explorer</Link>
           <Link to="/protocol" className="hover:text-foreground">Protocol</Link>
         </nav>
