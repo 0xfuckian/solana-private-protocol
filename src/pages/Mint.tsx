@@ -31,7 +31,7 @@ import {
   sealNoteFor,
 } from "@/lib/wallet";
 import { buildProof } from "@/lib/wallet";
-import { useS404 } from "@/lib/useS404";
+import { useS404 } from "@/lib/s404-context";
 import {
   ArrowRight,
   BadgeCheck,
@@ -425,7 +425,7 @@ function MintForm({
   const [lots, setLots] = useState(1);
   const [busy, setBusy] = useState(false);
 
-  const approved = (wallet?.faucetTotalLamports ?? 0) > 0;
+  const approved = wallet?.approved ?? false;
   const tier = approved ? "approved" : "open";
   const cap = approved ? APPROVED_MAX_LOTS : OPEN_MAX_LOTS;
   const perLot = approved ? APPROVED_RATE_LAMPORTS : OPEN_RATE_LAMPORTS;

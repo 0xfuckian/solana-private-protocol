@@ -4,12 +4,13 @@ import { Id } from "./_generated/dataModel";
 import {
   ensureProtocolState,
   protocolStateOrDefault,
+  getWalletForUser,
   getWalletForUserOrThrow,
   requireUserId,
 } from "./backendHelpers";
 import { sha256Hex } from "./sha256";
 import { ENVELOPE_TRANSFER_BYTES, MARKET_FEE_BPS, hexHashOf } from "../lib/protocol";
-import { NOTE_CIPHERTEXT_BYTES, buildEnvelope, parseSealed } from "./protocol";
+import { CIPHERTEXT_B64_LEN, buildEnvelope, parseSealed } from "./protocol";
 
 const PROTOCOL_FEE_LAMPORTS = 5_000;
 
@@ -61,7 +62,8 @@ export const listMyOrders = query({
   args: {},
   handler: async (ctx) => {
     const userId = await requireUserId(ctx);
-    const wallet = await getWalletForUserOrThrow(ctx, userId);
+    const wallet = await getWalletForUser(ctx, userId);
+    if (!wallet) return [];
     const orders = await ctx.db
       .query("orders")
       .withIndex("by_maker", (q) => q.eq("makerWalletId", wallet._id))
@@ -74,7 +76,8 @@ export const listMyTrades = query({
   args: {},
   handler: async (ctx) => {
     const userId = await requireUserId(ctx);
-    const wallet = await getWalletForUserOrThrow(ctx, userId);
+    const wallet = await getWalletForUser(ctx, userId);
+    if (!wallet) return [];
     const asBuyer = await ctx.db
       .query("trades")
       .withIndex("by_buyer", (q) => q.eq("buyerWalletId", wallet._id))
@@ -260,7 +263,7 @@ export const settleTrade = mutation({
     if (trade.status !== "pending_settlement") {
       throw new Error("Trade already settled.");
     }
-    if (sealedNote.ciphertext.length / 2 !== NOTE_CIPHERTEXT_BYTES) {
+    if (sealedNote.ciphertext.length !== CIPHERTEXT_B64_LEN) {
       throw new Error("Sealed note ciphertext must be 512 bytes.");
     }
 

@@ -4,11 +4,12 @@ import { mutation, query } from "./_generated/server";
 import {
   ensureProtocolState,
   protocolStateOrDefault,
+  getWalletForUser,
   getWalletForUserOrThrow,
   requireUserId,
 } from "./backendHelpers";
 import { ENVELOPE_MINT_BYTES, hexHashOf } from "../lib/protocol";
-import { NOTE_CIPHERTEXT_BYTES, buildEnvelope, parseSealed } from "./protocol";
+import { CIPHERTEXT_B64_LEN, buildEnvelope, parseSealed } from "./protocol";
 import { sha256Hex } from "./sha256";
 
 const PROTOCOL_FEE_LAMPORTS = 5_000;
@@ -75,7 +76,8 @@ export const listMyBalances = query({
   args: {},
   handler: async (ctx) => {
     const userId = await requireUserId(ctx);
-    const wallet = await getWalletForUserOrThrow(ctx, userId);
+    const wallet = await getWalletForUser(ctx, userId);
+    if (!wallet) return [];
     const balances = await ctx.db
       .query("vaultBalances")
       .withIndex("by_wallet_token", (q) => q.eq("walletId", wallet._id))
@@ -175,7 +177,7 @@ export const buyToken = mutation({
       throw new Error("Insufficient SOL — use the faucet.");
     }
 
-    if (sealedNote.ciphertext.length / 2 !== NOTE_CIPHERTEXT_BYTES) {
+    if (sealedNote.ciphertext.length !== CIPHERTEXT_B64_LEN) {
       throw new Error("Sealed note ciphertext must be 512 bytes.");
     }
     const expected = sha256Hex(

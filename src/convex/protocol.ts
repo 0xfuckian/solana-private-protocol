@@ -27,6 +27,8 @@ const ADDRESS_LEN = 44;
 
 /** Sealed-note ciphertext size: 512 bytes → the 934-byte mint envelope. */
 export const NOTE_CIPHERTEXT_BYTES = 512;
+/** The ciphertext travels base64-encoded: 512 bytes → exactly 684 chars. */
+export const CIPHERTEXT_B64_LEN = 684;
 
 interface SealedObj {
   ephemeral: string;
@@ -38,10 +40,26 @@ function b64UrlSafe(b64: string): string {
   return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function atobUrlSafe(b64: string): string {
-  const std = b64.replace(/-/g, "+").replace(/_/g, "/");
-  const pad = std + "===".slice((std.length + 3) % 4);
-  return atob(pad);
+const B64_CHARS =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/** Base64url decode without relying on atob (not guaranteed in isolates). */
+function base64DecodeToString(s: string): string {
+  const clean = s.replace(/-/g, "+").replace(/_/g, "/");
+  let acc = 0;
+  let bits = 0;
+  const bytes: number[] = [];
+  for (const ch of clean) {
+    const idx = B64_CHARS.indexOf(ch);
+    if (idx === -1) continue;
+    acc = (acc << 6) | idx;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes.push((acc >> bits) & 0xff);
+    }
+  }
+  return new TextDecoder().decode(new Uint8Array(bytes));
 }
 
 /**
@@ -73,7 +91,7 @@ export function parseSealed(payload: string): SealedObj | null {
     if (parts[1] !== "mint" && parts[1] !== "transfer") return null;
     const len = Number(parts[2]);
     if (!Number.isInteger(len) || len < 0 || len > parts[3].length) return null;
-    const json = atobUrlSafe(parts[3].slice(0, len));
+    const json = base64DecodeToString(parts[3].slice(0, len));
     const obj = JSON.parse(json);
     if (
       typeof obj.ephemeral === "string" &&
@@ -393,7 +411,7 @@ export const settleInvoice = mutation({
     if (!sealed) {
       throw new Error("Envelope is not a well-formed sealed note.");
     }
-    if (sealed.ciphertext.length / 2 !== NOTE_CIPHERTEXT_BYTES) {
+    if (sealed.ciphertext.length !== CIPHERTEXT_B64_LEN) {
       throw new Error("Sealed note ciphertext must be 512 bytes.");
     }
     const expectedCommitment = sha256Hex(
@@ -494,13 +512,13 @@ export const sendPrivate = mutation({
         .first();
       if (existing) throw new Error("Nullifier already seen — double spend blocked.");
     }
-    if (args.sealedNote.ciphertext.length / 2 !== NOTE_CIPHERTEXT_BYTES) {
+    if (args.sealedNote.ciphertext.length !== CIPHERTEXT_B64_LEN) {
       throw new Error("Sealed note ciphertext must be 512 bytes.");
     }
     const hasChange = args.changeNote.ephemeral !== "none";
     if (
       hasChange &&
-      (args.changeNote.ciphertext.length / 2 !== NOTE_CIPHERTEXT_BYTES ||
+      (args.changeNote.ciphertext.length !== CIPHERTEXT_B64_LEN ||
         !args.changeCommitment)
     ) {
       throw new Error("Change note is malformed.");
@@ -557,6 +575,26 @@ export const sendPrivate = mutation({
 });
 
 /**
+ * Devnet control: jump the mint to its sold-out state so the market's
+ * open-at-sellout behavior is demonstrable without minting 21,000 lots.
+ * Labeled as a simulation everywhere it is surfaced.
+ */
+export const simulateSellout = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const state = await ensureProtocolState(ctx);
+    if (state.marketOpen) return { already: true };
+    await ctx.db.patch(state._id, {
+      mintedTokens: state.totalSupply,
+      mintOpen: false,
+      marketOpen: true,
+      liquiditySeeded: true,
+    });
+    return { opened: true };
+  },
+});
+
+/**
  * What the explorer shows: every envelope with its proof, fee and slot — and
  * nothing about who owns what.
  */
@@ -592,7 +630,8 @@ export const listMyInvoices = query({
   args: {},
   handler: async (ctx) => {
     const userId = await requireUserId(ctx);
-    const wallet = await getWalletForUserOrThrow(ctx, userId);
+    const wallet = await getWalletForUser(ctx, userId);
+    if (!wallet) return [];
     const invoices = await ctx.db
       .query("invoices")
       .withIndex("by_wallet", (q) => q.eq("walletId", wallet._id))

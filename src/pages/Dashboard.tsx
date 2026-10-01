@@ -16,7 +16,7 @@ import {
   lamportsToSol,
   shortAddress,
 } from "@/lib/protocol";
-import { useS404 } from "@/lib/useS404";
+import { useS404 } from "@/lib/s404-context";
 import {
   ArrowRight,
   Copy,
@@ -219,7 +219,7 @@ function DashboardInner() {
     );
   }
 
-  const approved = wallet.faucetTotalLamports > 0;
+  const approved = wallet.approved;
 
   return (
     <div className="space-y-6">

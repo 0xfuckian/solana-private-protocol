@@ -8,7 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
-import { useS404 } from "@/lib/useS404";
+import { useS404 } from "@/lib/s404-context";
 import { TICKER, shortAddress } from "@/lib/protocol";
 import {
   ChevronDown,

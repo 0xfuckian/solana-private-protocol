@@ -110,7 +110,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="bg-sol-glow min-h-screen flex flex-col">
 
       
       {/* Auth Content */}
@@ -152,9 +152,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     </div>
                     <Button
                       type="submit"
-                      variant="outline"
                       size="icon"
                       disabled={isLoading}
+                      className="bg-sol-gradient text-[#04101a] hover:opacity-90"
                     >
                       {isLoading ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -245,12 +245,11 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     </Button>
                   </p>
                 </CardContent>
-                <CardFooter className="flex-col gap-2">
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    disabled={isLoading || otp.length !== 6}
-                  >
+                <CardFooter className="flex-col gap-2">                  <Button
+                      type="submit"
+                      className="w-full bg-sol-gradient font-semibold text-[#04101a] hover:opacity-90"
+                      disabled={isLoading || otp.length !== 6}
+                    >
                     {isLoading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />

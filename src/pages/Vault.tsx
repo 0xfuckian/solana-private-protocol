@@ -11,7 +11,7 @@ import {
   lamportsToSol,
   shortAddress,
 } from "@/lib/protocol";
-import { useS404 } from "@/lib/useS404";
+import { useS404 } from "@/lib/s404-context";
 import { buildProof, commitmentFor, sealNoteFor } from "@/lib/wallet";
 import {
   Boxes,

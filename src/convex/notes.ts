@@ -1,6 +1,5 @@
-import { v } from "convex/values";
 import { query } from "./_generated/server";
-import { getWalletForUserOrThrow, requireUserId } from "./backendHelpers";
+import { getWalletForUser, requireUserId } from "./backendHelpers";
 
 /**
  * The shielded pool, from the perspective of one wallet. Returns every
@@ -12,16 +11,17 @@ export const listSpendableNotes = query({
   args: {},
   handler: async (ctx) => {
     const userId = await requireUserId(ctx);
-    const wallet = await getWalletForUserOrThrow(ctx, userId);
-
+    const wallet = await getWalletForUser(ctx, userId);
+    if (!wallet) {
+      // Registered wallet is created on the mint page; until then the pool
+      // simply has nothing of the caller's to scan.
+      return { walletAddress: null, notes: [], totalCount: 0 };
+    }
     const notes = await ctx.db.query("notes").order("desc").collect();
+    // Published nullifiers are public — the client computes the nullifier of
+    // each note it can open and skips the ones already retired. The server
+    // never learns which notes opened, because it never sees the keys.
     const nullifiers = await ctx.db.query("nullifiers").collect();
-    const spentCommitments = new Set<string>();
-    // A spent note is retired when its nullifier appears; the ledger cannot
-    // link them, so we hand back every unspent-sealed note and let the
-    // client's keys do the linking.
-    void spentCommitments;
-    void nullifiers;
 
     return {
       walletAddress: wallet.address,
@@ -35,6 +35,7 @@ export const listSpendableNotes = query({
           createdAt: n.createdAt,
         })),
       totalCount: notes.length,
+      publishedNullifiers: nullifiers.map((n) => n.value),
     };
   },
 });

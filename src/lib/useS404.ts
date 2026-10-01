@@ -225,20 +225,29 @@ export function useS404() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!spendableNotes || !address) return;
+      if (!spendableNotes || !address || !spendKeyRef.current) return;
       setScanning(true);
+      const published = new Set(spendableNotes.publishedNullifiers ?? []);
       const mine: MyNote[] = [];
       for (const n of spendableNotes.notes) {
         const opened = await tryUnsealNote(address, n.sealed);
         if (opened) {
-          mine.push({
-            _id: n._id,
-            commitment: n.commitment,
-            sealed: n.sealed,
-            slot: n.slot,
-            value: opened.value,
-            memo: opened.memo,
-          });
+          // A published nullifier retires a note; only our key can compute
+          // which one, so the filtering happens here, never on the server.
+          const nullifier = await nullifierFor(
+            n.commitment,
+            spendKeyRef.current,
+          );
+          if (!published.has(nullifier)) {
+            mine.push({
+              _id: n._id,
+              commitment: n.commitment,
+              sealed: n.sealed,
+              slot: n.slot,
+              value: opened.value,
+              memo: opened.memo,
+            });
+          }
         }
       }
       if (cancelled) return;

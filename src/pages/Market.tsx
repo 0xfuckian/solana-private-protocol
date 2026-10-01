@@ -12,12 +12,13 @@ import {
   formatTokenAmount,
   lamportsToSol,
 } from "@/lib/protocol";
-import { useS404 } from "@/lib/useS404";
+import { useS404 } from "@/lib/s404-context";
 import { buildProof, commitmentFor, sealNoteFor } from "@/lib/wallet";
 import {
   ArrowDownUp,
   CircleCheck,
   Clock,
+  FlaskConical,
   Loader2,
   Lock,
   ShieldCheck,
@@ -291,6 +292,7 @@ function MarketInner() {
   const myTrades = useQuery(api.market.listMyTrades) as MyTrade[] | undefined;
   const cancel = useMutation(api.market.cancelOrder);
   const openMarket = useMutation(api.market.maybeOpenMarket);
+  const simulateSellout = useMutation(api.protocol.simulateSellout);
 
   // Flipping the market open at sellout — there is no button.
   useEffect(() => {
@@ -335,6 +337,35 @@ function MarketInner() {
             sub="your coins and notes stay yours until a trade settles"
           />
         </div>
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-start justify-between gap-3 p-5 sm:flex-row sm:items-center">
+            <div>
+              <p className="text-sm font-semibold">Devnet control</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Simulation only: jump the mint to its sold-out state to see
+                the book open. On mainnet this happens when the last lot is
+                minted — not before.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                try {
+                  const r = await simulateSellout({});
+                  toast.success(
+                    r.opened
+                      ? "Mint sold out — the book is open."
+                      : "Already open.",
+                  );
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Failed");
+                }
+              }}
+            >
+              <FlaskConical className="mr-1.5 size-4" /> Simulate sellout
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
