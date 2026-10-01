@@ -264,13 +264,22 @@ export async function nullifierFor(
   return sha256Hex(`s404-nullifier:${commitment}:${spendKeyHex}`);
 }
 
+/** Sealed-note ciphertext size: 512 bytes → the 934-byte mint envelope. */
+export const NOTE_CIPHERTEXT_BYTES = 512;
+/** Plaintext is space-padded so the ciphertext lands exactly on the size. */
+const NOTE_PLAINTEXT_BYTES = NOTE_CIPHERTEXT_BYTES - 16; // AES-GCM tag
+
 export interface SealedNote {
   ephemeral: string; // b64 ephemeral key material
   nonce: string; // b64 AES-GCM iv
-  ciphertext: string; // b64 AES-GCM(JSON{value, memo, r})
+  ciphertext: string; // b64 AES-GCM(JSON{value, memo, r}) — fixed length
 }
 
-/** Encrypt a note so only the holder of the receiver address can decrypt. */
+/**
+ * Encrypt a note so only the holder of the receiver address can decrypt.
+ * The plaintext is space-padded so the ciphertext is always exactly 512
+ * bytes — uniform envelope sizes are what stop length from leaking.
+ */
 export async function sealNoteFor(
   receiverAddress: string,
   note: { value: number; memo: string; r: string },
@@ -280,20 +289,23 @@ export async function sealNoteFor(
   const keyMaterial = await sha256Hex(
     `s404-view:${receiverAddress}:${bufToB64(eph.buffer)}`,
   );
-  const keyBytes = b64ToBuf(
-    bufToB64(hexToBuf(keyMaterial)),
-  );
+  const keyBytes = hexToBuf(keyMaterial);
   const key = await crypto.subtle.importKey(
     "raw",
-    keyBytes as unknown as ArrayBuffer,
+    keyBytes,
     "AES-GCM",
     false,
     ["encrypt", "decrypt"],
   );
+  const json = JSON.stringify(note);
+  if (json.length > NOTE_PLAINTEXT_BYTES) {
+    throw new Error("Note memo too long");
+  }
+  const padded = json.padEnd(NOTE_PLAINTEXT_BYTES, " ");
   const ct = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv: iv as unknown as ArrayBuffer },
     key,
-    textEncoder.encode(JSON.stringify(note)),
+    textEncoder.encode(padded),
   );
   return {
     ephemeral: bufToB64(eph.buffer),
@@ -308,13 +320,14 @@ export async function tryUnsealNote(
   sealed: SealedNote,
 ): Promise<{ value: number; memo: string; r: string } | null> {
   try {
+    void NOTE_PLAINTEXT_BYTES;
     const keyMaterial = await sha256Hex(
       `s404-view:${myAddress}:${sealed.ephemeral}`,
     );
-    const keyBytes = b64ToBuf(bufToB64(hexToBuf(keyMaterial)));
+    const keyBytes = hexToBuf(keyMaterial);
     const key = await crypto.subtle.importKey(
       "raw",
-      keyBytes as unknown as ArrayBuffer,
+      keyBytes,
       "AES-GCM",
       false,
       ["decrypt"],
@@ -324,10 +337,40 @@ export async function tryUnsealNote(
       key,
       b64ToBuf(sealed.ciphertext) as unknown as ArrayBuffer,
     );
-    return JSON.parse(textDecoder.decode(pt));
+    const parsed = JSON.parse(textDecoder.decode(pt).trimEnd()) as {
+      value: number;
+      memo: string;
+      r: string;
+    };
+    if (typeof parsed.value !== "number") return null;
+    return parsed;
   } catch {
     return null;
   }
+}
+
+/**
+ * Build the hex payload of an envelope, zero-padded to the uniform size
+ * (934 bytes for a mint, 921 for a transfer). Mirrors the node's parser:
+ * `S404|<kind>|<b64len>|<b64(json)>` + zero padding.
+ */
+export function buildEnvelopePayload(
+  kind: "mint" | "transfer",
+  sealed: SealedNote,
+  totalBytes: number,
+): string {
+  const b64 = btoa(JSON.stringify(sealed))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  const prefix = `S404|${kind}|${b64.length}|`;
+  let payload = prefix + b64;
+  const total = totalBytes * 2;
+  if (payload.length > total) {
+    throw new Error("Envelope overflows the uniform size");
+  }
+  while (payload.length < total) payload += "0";
+  return payload;
 }
 
 function hexToBuf(hex: string): Uint8Array<ArrayBuffer> {

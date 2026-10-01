@@ -12,6 +12,11 @@ import "./index.css";
 const Landing = lazy(() => import("./pages/Landing.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
+const Mint = lazy(() => import("./pages/Mint.tsx"));
+const Market = lazy(() => import("./pages/Market.tsx"));
+const Vault = lazy(() => import("./pages/Vault.tsx"));
+const Explorer = lazy(() => import("./pages/Explorer.tsx"));
+const Protocol = lazy(() => import("./pages/Protocol.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
@@ -131,6 +136,32 @@ createRoot(document.getElementById("root")!).render(
                   </RequireAuth>
                 }
               />
+              <Route
+                path="/mint"
+                element={
+                  <RequireAuth>
+                    <Mint />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/market"
+                element={
+                  <RequireAuth>
+                    <Market />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/vault"
+                element={
+                  <RequireAuth>
+                    <Vault />
+                  </RequireAuth>
+                }
+              />
+              <Route path="/explorer" element={<Explorer />} />
+              <Route path="/protocol" element={<Protocol />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

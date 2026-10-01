@@ -75,6 +75,7 @@ const schema = defineSchema(
       lamports: v.number(),
       tier: v.string(), // "approved" | "open"
       commitment: v.string(),
+      noteR: v.string(), // note randomness — needed to resume an interrupted mint
       depositAddress: v.string(),
       status: v.string(), // "awaiting_payment" | "seen" | "minted"
       signature: v.optional(v.string()),

@@ -25,6 +25,69 @@ import {
 const PROTOCOL_FEE_LAMPORTS = 5_000; // 0.00005 SOL — the relayer's published fee
 const ADDRESS_LEN = 44;
 
+/** Sealed-note ciphertext size: 512 bytes → the 934-byte mint envelope. */
+export const NOTE_CIPHERTEXT_BYTES = 512;
+
+interface SealedObj {
+  ephemeral: string;
+  nonce: string;
+  ciphertext: string;
+}
+
+function b64UrlSafe(b64: string): string {
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function atobUrlSafe(b64: string): string {
+  const std = b64.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = std + "===".slice((std.length + 3) % 4);
+  return atob(pad);
+}
+
+/**
+ * Envelope format: `S404|<kind>|<b64len>|<b64(json)>` zero-padded to the
+ * uniform size (934 bytes for a mint, 921 for a transfer). The explicit
+ * length makes the padding unambiguous.
+ */
+export function buildEnvelope(
+  kind: "mint" | "transfer",
+  sealed: SealedObj,
+): string {
+  const b64 = b64UrlSafe(btoa(JSON.stringify(sealed)));
+  const prefix = `S404|${kind}|${b64.length}|`;
+  const totalHexBytes =
+    kind === "mint" ? ENVELOPE_MINT_BYTES : ENVELOPE_TRANSFER_BYTES;
+  let payload = prefix + b64;
+  if (payload.length > totalHexBytes * 2) {
+    throw new Error("Envelope overflows the uniform size");
+  }
+  while (payload.length < totalHexBytes * 2) payload += "0";
+  return payload;
+}
+
+/** Padding is stripped via the explicit length field before JSON.parse. */
+export function parseSealed(payload: string): SealedObj | null {
+  try {
+    const parts = payload.split("|");
+    if (parts.length !== 4 || parts[0] !== "S404") return null;
+    if (parts[1] !== "mint" && parts[1] !== "transfer") return null;
+    const len = Number(parts[2]);
+    if (!Number.isInteger(len) || len < 0 || len > parts[3].length) return null;
+    const json = atobUrlSafe(parts[3].slice(0, len));
+    const obj = JSON.parse(json);
+    if (
+      typeof obj.ephemeral === "string" &&
+      typeof obj.nonce === "string" &&
+      typeof obj.ciphertext === "string"
+    ) {
+      return obj;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function nowSlot(genesisMs: number): number {
   // Simulated chain: ~2.5 slots/sec like Solana.
   return Math.floor((Date.now() - genesisMs) / 400);
@@ -85,13 +148,21 @@ export const getMyWallet = query({
     if (!wallet) return null;
     const state = await protocolStateOrDefault(ctx);
     const lotsMinted = wallet.lotsMinted;
+    // Approved tier = the first 200 wallets — same rule the node enforces
+    // when an invoice is opened.
+    const faucetUsers = await ctx.db
+      .query("wallets")
+      .withIndex("by_creation", (q) => q.lt("createdAt", 9e15))
+      .order("asc")
+      .take(200);
+    const approved = faucetUsers.some((w) => w._id === wallet._id);
     return {
       _id: wallet._id,
       address: wallet.address,
       fundingLamports: wallet.fundingLamports,
       faucetTotalLamports: wallet.faucetTotalLamports,
       lotsMinted,
-      approved: wallet.faucetTotalLamports > 0 ? true : false,
+      approved,
       mintedTokens: lotsMinted * state.lotSize,
       createdAt: wallet.createdAt,
     };
@@ -177,8 +248,13 @@ export const faucet = mutation({
  * Open a mint invoice. Reserves a one-time deposit address.
  */
 export const openInvoice = mutation({
-  args: { lots: v.number(), tier: v.string(), commitment: v.string() },
-  handler: async (ctx, { lots, tier, commitment }) => {
+  args: {
+    lots: v.number(),
+    tier: v.string(),
+    commitment: v.string(),
+    noteR: v.string(),
+  },
+  handler: async (ctx, { lots, tier, commitment, noteR }) => {
     const userId = await requireUserId(ctx);
     const wallet = await getWalletForUserOrThrow(ctx, userId);
     const state = await ensureProtocolState(ctx);
@@ -227,6 +303,7 @@ export const openInvoice = mutation({
       depositAddress,
       status: "awaiting_payment",
       commitment,
+      noteR,
       createdAt: Date.now(),
       expiresAt: Date.now() + 60 * 60 * 1000,
     });
@@ -304,15 +381,26 @@ export const settleInvoice = mutation({
     if (expected !== proof) {
       throw new Error("Proof rejected: it does not commit to these bytes.");
     }
-    if (payload.length / 2 !== ENVELOPE_MINT_BYTES) {
+
+    // Uniform size: the envelope is exactly 934 bytes — the sealed note
+    // followed by zero padding. Size never leaks the amount.
+    if (payload.length !== ENVELOPE_MINT_BYTES * 2) {
       throw new Error(
         `Mint envelope must be exactly ${ENVELOPE_MINT_BYTES} bytes.`,
       );
     }
-    const ack = hexHashOf(payload);
-    if (!payload.includes(ack.slice(0, 16))) {
-      // Sanity check that the payload embeds its own acknowledgment tag.
-      throw new Error("Envelope missing acknowledgment tag.");
+    const sealed = parseSealed(payload);
+    if (!sealed) {
+      throw new Error("Envelope is not a well-formed sealed note.");
+    }
+    if (sealed.ciphertext.length / 2 !== NOTE_CIPHERTEXT_BYTES) {
+      throw new Error("Sealed note ciphertext must be 512 bytes.");
+    }
+    const expectedCommitment = sha256Hex(
+      `s404-note:${invoice.lots * LOT_SIZE}:${invoice.noteR}:${wallet.address}`,
+    );
+    if (expectedCommitment !== invoice.commitment) {
+      throw new Error("Commitment mismatch — envelope does not bind the invoice.");
     }
 
     // Deduct payment + relayer fee.
@@ -338,10 +426,9 @@ export const settleInvoice = mutation({
     });
 
     // Sealed note — only the buyer's browser can open it.
-    const commitment = invoice.commitment;
     await ctx.db.insert("notes", {
-      commitment,
-      sealed: JSON.parse(payload) as { ephemeral: string; nonce: string; ciphertext: string },
+      commitment: invoice.commitment,
+      sealed,
       slot,
       createdAt: Date.now(),
     });
@@ -370,6 +457,7 @@ export const sendPrivate = mutation({
     nullifiers: v.array(v.string()),
     receiver: v.string(),
     amount: v.number(),
+    receiverCommitment: v.string(),
     sealedNote: v.object({
       ephemeral: v.string(),
       nonce: v.string(),
@@ -380,8 +468,8 @@ export const sendPrivate = mutation({
       nonce: v.string(),
       ciphertext: v.string(),
     }),
-    proof: v.string(),
     changeCommitment: v.string(),
+    proof: v.string(),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -406,9 +494,21 @@ export const sendPrivate = mutation({
         .first();
       if (existing) throw new Error("Nullifier already seen — double spend blocked.");
     }
+    if (args.sealedNote.ciphertext.length / 2 !== NOTE_CIPHERTEXT_BYTES) {
+      throw new Error("Sealed note ciphertext must be 512 bytes.");
+    }
+    const hasChange = args.changeNote.ephemeral !== "none";
+    if (
+      hasChange &&
+      (args.changeNote.ciphertext.length / 2 !== NOTE_CIPHERTEXT_BYTES ||
+        !args.changeCommitment)
+    ) {
+      throw new Error("Change note is malformed.");
+    }
 
-    // Verify the proof commits to the payload parts.
-    const statement = `${args.nullifiers.join(",")}|${args.receiver}|${args.amount}|${JSON.stringify(args.sealedNote)}`;
+    // Verify the proof commits to the payload parts — including the new
+    // commitments, so a published note cannot be swapped after the fact.
+    const statement = `${args.nullifiers.join(",")}|${args.receiver}|${args.amount}|${args.receiverCommitment}|${JSON.stringify(args.sealedNote)}`;
     const expected = sha256Hex(sha256Hex(statement) + "s404-circuit-v1");
     if (expected !== args.proof) {
       throw new Error("Proof rejected: it does not commit to these bytes.");
@@ -425,7 +525,7 @@ export const sendPrivate = mutation({
       slot,
       payloadSize: ENVELOPE_TRANSFER_BYTES,
       feeLamports: PROTOCOL_FEE_LAMPORTS,
-      payload: JSON.stringify(args.sealedNote),
+      payload: buildEnvelope("transfer", args.sealedNote),
       proof: args.proof,
       createdAt: Date.now(),
     });
@@ -434,17 +534,19 @@ export const sendPrivate = mutation({
       await ctx.db.insert("nullifiers", { value: n, slot });
     }
     await ctx.db.insert("notes", {
-      commitment: hexHashOf(`c:${args.sealedNote.ciphertext}`),
+      commitment: args.receiverCommitment,
       sealed: args.sealedNote,
       slot,
       createdAt: Date.now(),
     });
-    await ctx.db.insert("notes", {
-      commitment: args.changeCommitment,
-      sealed: args.changeNote,
-      slot,
-      createdAt: Date.now(),
-    });
+    if (hasChange) {
+      await ctx.db.insert("notes", {
+        commitment: args.changeCommitment,
+        sealed: args.changeNote,
+        slot,
+        createdAt: Date.now(),
+      });
+    }
 
     await ctx.db.patch(state._id, {
       feeLamportsCollected: state.feeLamportsCollected + PROTOCOL_FEE_LAMPORTS,

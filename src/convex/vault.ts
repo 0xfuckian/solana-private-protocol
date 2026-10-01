@@ -3,10 +3,12 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
   ensureProtocolState,
+  protocolStateOrDefault,
   getWalletForUserOrThrow,
   requireUserId,
 } from "./backendHelpers";
 import { ENVELOPE_MINT_BYTES, hexHashOf } from "../lib/protocol";
+import { NOTE_CIPHERTEXT_BYTES, buildEnvelope, parseSealed } from "./protocol";
 import { sha256Hex } from "./sha256";
 
 const PROTOCOL_FEE_LAMPORTS = 5_000;
@@ -20,14 +22,15 @@ export const listTokens = query({
   handler: async (ctx) => {
     await getAuthUserId(ctx); // public read, auth optional
     const tokens = await ctx.db.query("vaultTokens").order("desc").collect();
+    const state = await protocolStateOrDefault(ctx);
     const protocolToken = {
       _id: "s404",
-      ticker: "S404",
-      name: "S404 — the private SOL standard",
-      maxSupply: 210_000_000,
-      mintedTokens: 0,
+      ticker: state.ticker,
+      name: "The private SOL standard",
+      maxSupply: state.totalSupply,
+      mintedTokens: state.mintedTokens,
       priceLamportsPerKilo: 10_000,
-      mintOpen: true,
+      mintOpen: state.mintOpen,
       isProtocolToken: true,
       creator: null as string | null,
       createdAt: 0,
@@ -61,6 +64,23 @@ export const getBalance = query({
       .collect();
     const bal = balances.find((b) => b.tokenId === tokenId);
     return bal?.amount ?? 0;
+  },
+});
+
+/**
+ * All of the caller's vault balances in one query — the page maps token
+ * ids to amounts without per-token subscriptions.
+ */
+export const listMyBalances = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
+    const wallet = await getWalletForUserOrThrow(ctx, userId);
+    const balances = await ctx.db
+      .query("vaultBalances")
+      .withIndex("by_wallet_token", (q) => q.eq("walletId", wallet._id))
+      .collect();
+    return balances.map((b) => ({ tokenId: b.tokenId, amount: b.amount }));
   },
 });
 
@@ -155,12 +175,19 @@ export const buyToken = mutation({
       throw new Error("Insufficient SOL — use the faucet.");
     }
 
+    if (sealedNote.ciphertext.length / 2 !== NOTE_CIPHERTEXT_BYTES) {
+      throw new Error("Sealed note ciphertext must be 512 bytes.");
+    }
     const expected = sha256Hex(
       sha256Hex(`vaultbuy:${tokenId}:${amountTokens}:${JSON.stringify(sealedNote)}`) +
         "s404-circuit-v1",
     );
     if (expected !== proof) {
       throw new Error("Proof rejected: it does not commit to these bytes.");
+    }
+    const parsed = parseSealed(buildEnvelope("mint", sealedNote));
+    if (!parsed || parsed.ciphertext !== sealedNote.ciphertext) {
+      throw new Error("Envelope is not a well-formed sealed note.");
     }
 
     // Publish the mint envelope — amounts and ticker are public at mint time,
@@ -171,7 +198,7 @@ export const buyToken = mutation({
       slot: Math.floor((Date.now() - state.genesisMs) / 400),
       payloadSize: ENVELOPE_MINT_BYTES,
       feeLamports: PROTOCOL_FEE_LAMPORTS,
-      payload: JSON.stringify({ ticker: token.ticker, amount: amountTokens }),
+      payload: buildEnvelope("mint", sealedNote),
       proof,
       createdAt: Date.now(),
     });

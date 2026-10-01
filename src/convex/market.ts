@@ -9,6 +9,7 @@ import {
 } from "./backendHelpers";
 import { sha256Hex } from "./sha256";
 import { ENVELOPE_TRANSFER_BYTES, MARKET_FEE_BPS, hexHashOf } from "../lib/protocol";
+import { NOTE_CIPHERTEXT_BYTES, buildEnvelope, parseSealed } from "./protocol";
 
 const PROTOCOL_FEE_LAMPORTS = 5_000;
 
@@ -33,6 +34,7 @@ export const getBook = query({
       .sort((a, b) => b.priceLamportsPerKilo - a.priceLamportsPerKilo)
       .slice(0, 12)
       .map((o) => ({
+        orderId: o._id,
         price: o.priceLamportsPerKilo,
         remaining: o.amountTokens - o.filledTokens,
         created: o.createdAt,
@@ -41,7 +43,8 @@ export const getBook = query({
       .filter((o) => o.side === "sell")
       .sort((a, b) => a.priceLamportsPerKilo - b.priceLamportsPerKilo)
       .slice(0, 12)
-    .map((o) => ({
+      .map((o) => ({
+        orderId: o._id,
         price: o.priceLamportsPerKilo,
         remaining: o.amountTokens - o.filledTokens,
         created: o.createdAt,
@@ -80,7 +83,23 @@ export const listMyTrades = query({
       .query("trades")
       .withIndex("by_seller", (q) => q.eq("sellerWalletId", wallet._id))
       .collect();
-    return [...asBuyer, ...asSeller].sort((a, b) => b.createdAt - a.createdAt);
+    const all = [...asBuyer, ...asSeller].sort(
+      (a, b) => b.createdAt - a.createdAt,
+    );
+    // The seller needs the buyer's shielded address to seal the settlement
+    // note; the buyer's own browser would never learn it otherwise.
+    const withAddresses = [];
+    for (const t of all) {
+      const buyer = await ctx.db.get(t.buyerWalletId);
+      const seller = await ctx.db.get(t.sellerWalletId);
+      withAddresses.push({
+        ...t,
+        buyerAddress: buyer?.address ?? "",
+        sellerAddress: seller?.address ?? "",
+        iAmBuyer: t.buyerWalletId === wallet._id,
+      });
+    }
+    return withAddresses;
   },
 });
 
@@ -173,12 +192,16 @@ export const takeOrder = mutation({
       buyOrderId = undefined;
       sellOrderId = order._id;
     } else {
-      // I am selling into a bid; maker buys. The buyer's SOL is escrowed now.
+      // I am selling into a bid; maker buys. Their SOL leg is escrowed at
+      // fill — the node verifies that leg against the ledger.
       const buyer = await ctx.db.get(order.makerWalletId);
       if (!buyer) throw new Error("Buyer wallet missing.");
       if (buyer.fundingLamports < gross + fee) {
         throw new Error("Maker has insufficient escrow — order is not takeable.");
       }
+      await ctx.db.patch(buyer._id, {
+        fundingLamports: buyer.fundingLamports - (gross + fee),
+      });
       buyerWalletId = order.makerWalletId;
       sellerWalletId = wallet._id;
       buyOrderId = order._id;
@@ -237,6 +260,9 @@ export const settleTrade = mutation({
     if (trade.status !== "pending_settlement") {
       throw new Error("Trade already settled.");
     }
+    if (sealedNote.ciphertext.length / 2 !== NOTE_CIPHERTEXT_BYTES) {
+      throw new Error("Sealed note ciphertext must be 512 bytes.");
+    }
 
     const expected = sha256Hex(
       sha256Hex(`${tradeId}:${commitment}:${JSON.stringify(sealedNote)}`) +
@@ -244,6 +270,10 @@ export const settleTrade = mutation({
     );
     if (expected !== proof) {
       throw new Error("Proof rejected: it does not commit to these bytes.");
+    }
+    const parsed = parseSealed(buildEnvelope("transfer", sealedNote));
+    if (!parsed || parsed.ciphertext !== sealedNote.ciphertext) {
+      throw new Error("Envelope is not a well-formed sealed note.");
     }
 
     const slot = nowSlot(state.genesisMs);
@@ -253,7 +283,7 @@ export const settleTrade = mutation({
       slot,
       payloadSize: ENVELOPE_TRANSFER_BYTES,
       feeLamports: PROTOCOL_FEE_LAMPORTS,
-      payload: JSON.stringify(sealedNote),
+      payload: buildEnvelope("transfer", sealedNote),
       proof,
       tradeId,
       createdAt: Date.now(),
@@ -282,45 +312,18 @@ export const settleTrade = mutation({
 });
 
 /**
- * Seed the book with liquidity the moment the mint sells out, so "opens at
- * sellout" is demonstrable tonight rather than theoretical.
+ * Open the market the moment the mint sells out. There is no button and no
+ * house liquidity: orders are refused by the node until this flips, and the
+ * book is empty until real participants place signed intents.
  */
-export const maybeSeedLiquidity = mutation({
+export const maybeOpenMarket = mutation({
   args: {},
   handler: async (ctx) => {
     const state = await ensureProtocolState(ctx);
-    if (state.marketOpen || state.liquiditySeeded) return { seeded: false };
-    if (state.mintedTokens < state.totalSupply) return { seeded: false };
+    if (state.marketOpen) return { opened: false, already: true };
+    if (state.mintedTokens < state.totalSupply) return { opened: false };
 
     await ctx.db.patch(state._id, { marketOpen: true, liquiditySeeded: true });
-
-    const house = await ctx.db
-      .query("wallets")
-      .withIndex("by_address", (q) =>
-        q.eq("address", "S404LIQUIDITY0000000000000000000000000000000"),
-      )
-      .first();
-    if (!house) return { seeded: false, reason: "no house wallet" };
-
-    const seed = [
-      { side: "buy", price: 9_000, amount: 250_000 },
-      { side: "buy", price: 8_500, amount: 500_000 },
-      { side: "buy", price: 8_000, amount: 1_000_000 },
-      { side: "sell", price: 11_000, amount: 250_000 },
-      { side: "sell", price: 11_500, amount: 500_000 },
-      { side: "sell", price: 12_000, amount: 1_000_000 },
-    ];
-    for (const s of seed) {
-      await ctx.db.insert("orders", {
-        makerWalletId: house._id,
-        side: s.side,
-        priceLamportsPerKilo: s.price,
-        amountTokens: s.amount,
-        filledTokens: 0,
-        status: "open",
-        createdAt: Date.now(),
-      });
-    }
-    return { seeded: true };
+    return { opened: true };
   },
 });

@@ -308,13 +308,17 @@ export function useS404() {
         memo,
         r,
       });
+      // The commitment only needs sender-known info: value, randomness and
+      // the (public) receiver address. Ownership binds later, when the
+      // receiver derives a nullifier with their own spend key.
+      const receiverCommitment = await commitmentFor(amount, r, receiver);
       const change = acc - amount;
       const changeNote =
         change > 0
           ? await sealNoteFor(address, { value: change, memo: "change", r })
           : null;
       const changeCommitment = changeNote
-        ? await commitmentFor(change, "change:" + r, spendKeyRef.current)
+        ? await commitmentFor(change, "change:" + r, address)
         : "";
 
       // The proof commits to every byte of the statement.
@@ -325,11 +329,12 @@ export function useS404() {
         nullifiers,
         receiver,
         amount,
+        receiverCommitment,
         sealedNote: receiverNote,
         changeNote:
           changeNote ?? { ephemeral: "none", nonce: "none", ciphertext: "none" },
-        proof,
         changeCommitment,
+        proof,
       });
     },
     [address, balance, notes, sendPrivateMut],
