@@ -347,7 +347,7 @@ function ViewKeysCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
   const [scanAddr, setScanAddr] = useState("");
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<
-    { value: number; memo: string; slot: number }[] | null
+    { commitment: string; value: number; memo: string; slot: number }[] | null
   >(null);
   const [scannedFor, setScannedFor] = useState("");
 

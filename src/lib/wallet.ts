@@ -301,19 +301,13 @@ export async function outgoingViewKeyFromSeedHex(
 }
 
 /**
- * 1-byte view tag, exactly as in Sapling: the sender embeds a byte derived
- * from the receiver's secret scanning material, so the receiver can skip
- * ~255 of every 256 foreign notes without a trial decrypt. Here the tag is
- * the first byte of SHA-256(tag-domain ‖ receiver ‖ ephemeral) — the
- * receiver recomputes it from public data plus their own address.
+ * 1-byte view tag, in the spirit of Sapling: the sender embeds a byte the
+ * receiver can recompute from public data, so their scanner can skip
+ * ~255 of every 256 foreign notes without a trial decrypt. Derived purely
+ * from the receiver's address — both sides compute it independently.
  */
-export async function viewTagFor(
-  receiverAddress: string,
-  ephemeralB64: string,
-): Promise<number> {
-  const hex = await sha256Hex(
-    `solzk-vtag:${receiverAddress}:${ephemeralB64}`,
-  );
+export async function viewTagFor(receiverAddress: string): Promise<number> {
+  const hex = await sha256Hex(`solzk-vtag:${receiverAddress}`);
   return parseInt(hex.slice(0, 2), 16);
 }
 
@@ -323,7 +317,7 @@ export async function ephemeralMatchesTag(
   ephemeralB64: string,
 ): Promise<boolean> {
   try {
-    const tag = await viewTagFor(myAddress, ephemeralB64);
+    const tag = await viewTagFor(myAddress);
     const first = atob(ephemeralB64).charCodeAt(0);
     return first === tag;
   } catch {
@@ -342,9 +336,8 @@ export async function sealNoteFor(
   note: { value: number; memo: string; r: string },
 ): Promise<SealedNote> {
   const eph = crypto.getRandomValues(new Uint8Array(16));
-  const ephB64 = bufToB64(eph.buffer);
   // Embed the view tag: the receiver's scanner matches this byte first.
-  const tag = await viewTagFor(receiverAddress, ephB64);
+  const tag = await viewTagFor(receiverAddress);
   eph[0] = tag;
   const taggedB64 = bufToB64(eph.buffer);
   const iv = crypto.getRandomValues(new Uint8Array(12));

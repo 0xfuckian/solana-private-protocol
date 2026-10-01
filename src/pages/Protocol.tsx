@@ -236,7 +236,8 @@ export default function Protocol() {
             Everything after the third confirmation happens on its own — the
             proof is built in your browser, and the relayer pays the network
             fee so none of your coins ever sit in the same transaction as
-            your envelope.
+            your envelope. Transfers can go further: with fee-in-note, the
+            note itself pays the relayer and your wallet needs no SOL at all.
           </p>
           <div className="grid gap-3 md:grid-cols-5">
             {[
@@ -389,15 +390,87 @@ export default function Protocol() {
           </p>
         </Section>
 
-        <Section id="roadmap" num="07" kicker="Roadmap" title="What comes after the mint">
+        <Section id="architecture" num="07" kicker="Architecture" title="What is built and running">
           <p>
-            The shielded pool, the mint, the vault and the order book are
-            built and running here. Fee sharing is intended and unsolved: the
-            protocol cannot see who holds what — that is the entire point — so
-            a conventional distribution is impossible. The workable shape is a
-            zero-knowledge claim: a holder proves they held at least some
-            amount at a past anchor without revealing who they are. That is a
-            real circuit to design and audit, not a configuration change.
+            Everything below ships in this devnet build — try each piece from
+            its page before you take the design on faith.
+          </p>
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            {[
+              [
+                "Fee-in-note relayer",
+                "A transfer pays its relayer from the note itself, so a wallet with zero SOL stays fully spendable. In-note fees accrue in a public relayer fee vault, visible in the explorer.",
+                "/dashboard",
+                "Send with the fee-in-note switch on",
+              ],
+              [
+                "Fee buyback-and-burn",
+                "The keeper sweeps the treasury fee vault, buys SOLZK out of protocol liquidity and burns it. Public, permissionless, deflationary — the burn feed lives in the explorer.",
+                "/vault",
+                "Run the keeper sweep",
+              ],
+              [
+                "Private exit (redeem)",
+                "Burn notes, receive SOL from the liquidity reserve at the exit rate. The ledger sees a burn and a payout — never a balance, never a link.",
+                "/market",
+                "Redeem to SOL",
+              ],
+              [
+                "Pay links",
+                "Recipient, amount and memo encoded in the URL fragment — no server, no invoice. Open the link, tap once, the envelope lands.",
+                "/pay",
+                "Open a payment request",
+              ],
+              [
+                "View keys & view tags",
+                "Incoming and outgoing view keys decrypt without spending authority; every note carries a 1-byte tag so the scanner prioritises your notes first.",
+                "/dashboard",
+                "Inspect your view keys",
+              ],
+              [
+                "Burn-to-discount tiers",
+                "Burn SOLZK to set a permanent public fee tier — Ember −25%, Onyx −50%, Obsidian −75%. Burned tokens leave the supply forever.",
+                "/dashboard",
+                "Burn for a tier",
+              ],
+            ].map(([title, body, href, cta]) => (
+              <div
+                key={title}
+                className="flex flex-col rounded-xl border border-border/70 bg-card p-4"
+              >
+                <p className="text-sm font-semibold text-foreground">{title}</p>
+                <p className="mt-1.5 flex-1 text-xs leading-5 text-muted-foreground">
+                  {body}
+                </p>
+                <Link
+                  to={href}
+                  className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                >
+                  {cta} <ArrowRight className="size-3" />
+                </Link>
+              </div>
+            ))}
+          </div>
+          <p className="mt-5 text-sm leading-6 text-muted-foreground">
+            On the real chain these map to one generalized join-split circuit
+            with a single instruction set — initialize_pool, shield, transfer,
+            unshield, swap, register_asp, claim_or_burn_fees — but the
+            guarantees they demo here are the same shape: uniform envelopes,
+            nullifier double-spend protection, and a ledger that stores
+            commitments and ciphertexts only.
+          </p>
+        </Section>
+
+        <Section id="roadmap" num="08" kicker="Roadmap" title="What comes next">
+          <p>
+            Still ahead of this build: association sets to break the same-
+            address heuristic, private swaps routed through a DEX without
+            unshielding, shield for arbitrary SPL assets, and stealth
+            addresses so a published payment address stops being a stable
+            identifier. Fee sharing through zero-knowledge claims — proving
+            you held value at a past anchor without revealing who you are —
+            remains a real circuit to design and audit, not a configuration
+            change.
           </p>
           <p>
             Read the roadmap as intent, not as a promise of delivery or of
@@ -406,7 +479,7 @@ export default function Protocol() {
           </p>
         </Section>
 
-        <Section id="faq" num="08" kicker="Troubleshooting" title="Common questions">
+        <Section id="faq" num="09" kicker="Troubleshooting" title="Common questions">
           <div className="grid gap-3 sm:grid-cols-2">
             {[
               ["I paid but nothing happened.", "Payments need three confirmations, roughly 12 seconds. The page shows the count as it climbs."],
