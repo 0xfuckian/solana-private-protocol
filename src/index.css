@@ -42,74 +42,94 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-/* CHANGE VALUES FOR THEME */
+/*
+ * S404 theme — Solana dark.
+ * Near-black violet-tinted surfaces, #14F195 (mint green) as primary,
+ * #9945FF (violet) as accent, and the official Solana gradient for
+ * emphasis. The app is dark-only by design.
+ */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --radius: 0.75rem;
+
+  /* Solana brand */
+  --sol-green: #14f195;
+  --sol-violet: #9945ff;
+  --sol-gradient: linear-gradient(
+    91.26deg,
+    #9945ff 0.04%,
+    #8752f3 23.43%,
+    #5497d5 41.59%,
+    #43b4ca 55.11%,
+    #20e3b2 78.05%,
+    #14f195 100.04%
+  );
+
+  /* shadcn tokens (dark values in :root — the app is dark-only) */
+  --background: #070b14;
+  --foreground: #f5f7fa;
+  --card: #0b1120;
+  --card-foreground: #f5f7fa;
+  --popover: #0d1324;
+  --popover-foreground: #f5f7fa;
+  --primary: #14f195;
+  --primary-foreground: #04101a;
+  --secondary: rgba(255, 255, 255, 0.06);
+  --secondary-foreground: #f5f7fa;
+  --muted: rgba(255, 255, 255, 0.05);
+  --muted-foreground: #8b93a7;
+  --accent: rgba(153, 69, 255, 0.16);
+  --accent-foreground: #c9b4ff;
+  --destructive: #ff5c5c;
+  --border: rgba(255, 255, 255, 0.09);
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: rgba(20, 241, 149, 0.55);
+  --chart-1: #14f195;
+  --chart-2: #9945ff;
+  --chart-3: #43b4ca;
+  --chart-4: #20e3b2;
+  --chart-5: #5497d5;
+  --sidebar: #080d18;
+  --sidebar-foreground: #f5f7fa;
+  --sidebar-primary: #9945ff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(255, 255, 255, 0.06);
+  --sidebar-accent-foreground: #f5f7fa;
+  --sidebar-border: rgba(255, 255, 255, 0.09);
+  --sidebar-ring: rgba(153, 69, 255, 0.55);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #070b14;
+  --foreground: #f5f7fa;
+  --card: #0b1120;
+  --card-foreground: #f5f7fa;
+  --popover: #0d1324;
+  --popover-foreground: #f5f7fa;
+  --primary: #14f195;
+  --primary-foreground: #04101a;
+  --secondary: rgba(255, 255, 255, 0.06);
+  --secondary-foreground: #f5f7fa;
+  --muted: rgba(255, 255, 255, 0.05);
+  --muted-foreground: #8b93a7;
+  --accent: rgba(153, 69, 255, 0.16);
+  --accent-foreground: #c9b4ff;
+  --destructive: #ff5c5c;
+  --border: rgba(255, 255, 255, 0.09);
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: rgba(20, 241, 149, 0.55);
+  --chart-1: #14f195;
+  --chart-2: #9945ff;
+  --chart-3: #43b4ca;
+  --chart-4: #20e3b2;
+  --chart-5: #5497d5;
+  --sidebar: #080d18;
+  --sidebar-foreground: #f5f7fa;
+  --sidebar-primary: #9945ff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(255, 255, 255, 0.06);
+  --sidebar-accent-foreground: #f5f7fa;
+  --sidebar-border: rgba(255, 255, 255, 0.09);
+  --sidebar-ring: rgba(153, 69, 255, 0.55);
 }
 
 @layer base {
@@ -118,9 +138,105 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "ss01" on, "cv01" on;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
   button:not([disabled]),
   [role="button"]:not([disabled]) {
     cursor: pointer;
   }
+  ::selection {
+    background: rgba(20, 241, 149, 0.28);
+    color: #ffffff;
+  }
+}
+
+@layer utilities {
+  /* The official Solana gradient, as text */
+  .text-sol-gradient {
+    background: var(--sol-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  /* The official Solana gradient, as a filled surface */
+  .bg-sol-gradient {
+    background: var(--sol-gradient);
+  }
+  /* Soft ambient glow used behind heroes and CTAs */
+  .bg-sol-glow {
+    background:
+      radial-gradient(
+        42rem 26rem at 12% -8%,
+        rgba(153, 69, 255, 0.16),
+        transparent 60%
+      ),
+      radial-gradient(
+        38rem 24rem at 88% 4%,
+        rgba(20, 241, 149, 0.1),
+        transparent 60%
+      );
+  }
+  /* Hairline gradient border for cards / panels */
+  .border-sol-gradient {
+    border: 1px solid transparent;
+    background:
+      linear-gradient(var(--card), var(--card)) padding-box,
+      linear-gradient(
+          120deg,
+          rgba(153, 69, 255, 0.55),
+          rgba(84, 151, 213, 0.25) 45%,
+          rgba(20, 241, 149, 0.55)
+        )
+        border-box;
+  }
+  .font-mono-tabular {
+    font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      "Liberation Mono", "Courier New", monospace;
+  }
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+  }
+}
+
+/* Animated shimmer for the hero headline accent */
+@keyframes sol-shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+.sol-shimmer {
+  background-size: 220% 220%;
+  animation: sol-shimmer 7s ease-in-out infinite;
+}
+
+/* Slot progress pulse */
+@keyframes sol-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.sol-pulse {
+  animation: sol-pulse 1.6s ease-in-out infinite;
 }

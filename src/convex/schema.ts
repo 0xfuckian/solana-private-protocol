@@ -16,28 +16,157 @@ export const roleValidator = v.union(
 );
 export type Role = Infer<typeof roleValidator>;
 
+const sealedNote = v.object({
+  ephemeral: v.string(),
+  nonce: v.string(),
+  ciphertext: v.string(),
+});
+
 const schema = defineSchema(
   {
     // default auth tables using convex auth.
     ...authTables, // do not remove or modify
 
-    // the users table is the default users table that is brought in by the authTables
     users: defineTable({
-      name: v.optional(v.string()), // name of the user. do not remove
-      image: v.optional(v.string()), // image of the user. do not remove
-      email: v.optional(v.string()), // email of the user. do not remove
-      emailVerificationTime: v.optional(v.number()), // email verification time. do not remove
-      isAnonymous: v.optional(v.boolean()), // is the user anonymous. do not remove
+      name: v.optional(v.string()),
+      image: v.optional(v.string()),
+      email: v.optional(v.string()),
+      emailVerificationTime: v.optional(v.number()),
+      isAnonymous: v.optional(v.boolean()),
+      role: v.optional(roleValidator),
+    }).index("email", ["email"]),
 
-      role: v.optional(roleValidator), // role of the user. do not remove
-    }).index("email", ["email"]), // index for the email. do not remove or modify
+    // ---- S404 protocol -----------------------------------------------------
 
-    // add other tables here
+    // Singleton: key === "global"
+    protocolState: defineTable({
+      key: v.literal("global"),
+      ticker: v.string(),
+      totalSupply: v.number(),
+      lotSize: v.number(),
+      mintedTokens: v.number(),
+      mintOpen: v.boolean(),
+      marketOpen: v.boolean(),
+      genesisMs: v.number(),
+      feeLamportsCollected: v.number(),
+      liquiditySeeded: v.optional(v.boolean()),
+    }).index("by_key", ["key"]),
 
-    // tableName: defineTable({
-    //   ...
-    //   // table fields
-    // }).index("by_field", ["field"])
+    // One shielded wallet per app account. The address is the public shielded
+    // address; fundingLamports is the ordinary (unshielded) SOL balance used
+    // to pay for mints and market fills.
+    wallets: defineTable({
+      userId: v.id("users"),
+      address: v.string(),
+      fundingLamports: v.number(),
+      faucetTotalLamports: v.number(),
+      lotsMinted: v.number(),
+      createdAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_address", ["address"])
+      .index("by_creation", ["createdAt"]),
+
+    // Mint invoices. A one-time deposit address belongs to exactly one
+    // invoice — that is how the node knows the payment was yours.
+    invoices: defineTable({
+      walletId: v.id("wallets"),
+      lots: v.number(),
+      lamports: v.number(),
+      tier: v.string(), // "approved" | "open"
+      commitment: v.string(),
+      depositAddress: v.string(),
+      status: v.string(), // "awaiting_payment" | "seen" | "minted"
+      signature: v.optional(v.string()),
+      paidAt: v.optional(v.number()),
+      createdAt: v.number(),
+      expiresAt: v.number(),
+      envelopeId: v.optional(v.id("envelopes")),
+    })
+      .index("by_wallet", ["walletId"])
+      .index("by_deposit_address", ["depositAddress"]),
+
+    // Published envelopes — the only thing the "chain" ever sees. The payload
+    // is an opaque byte string; the proof commits to every byte of it.
+    envelopes: defineTable({
+      kind: v.string(), // "mint" | "transfer"
+      signature: v.string(),
+      slot: v.number(),
+      payloadSize: v.number(),
+      feeLamports: v.number(),
+      payload: v.string(),
+      proof: v.string(),
+      invoiceId: v.optional(v.id("invoices")),
+      tradeId: v.optional(v.id("trades")),
+      createdAt: v.number(),
+    })
+      .index("by_signature", ["signature"])
+      .index("by_created", ["createdAt"]),
+
+    // Sealed notes. The ledger stores commitments and ciphertexts only —
+    // ownership is established by trial-decrypting in the owner's browser.
+    notes: defineTable({
+      commitment: v.string(),
+      sealed: sealedNote,
+      slot: v.number(),
+      createdAt: v.number(),
+    }).index("by_commitment", ["commitment"]),
+
+    // Published nullifiers. Spending publishes one; uniqueness here is what
+    // prevents double-spends without linking the spend to any commitment.
+    nullifiers: defineTable({
+      value: v.string(),
+      slot: v.number(),
+    }).index("by_value", ["value"]),
+
+    // Signed limit orders — intents, not deposits.
+    orders: defineTable({
+      makerWalletId: v.id("wallets"),
+      side: v.string(), // "buy" | "sell"
+      priceLamportsPerKilo: v.number(), // lamports per 1,000 S404
+      amountTokens: v.number(),
+      filledTokens: v.number(),
+      status: v.string(), // "open" | "filled" | "cancelled"
+      createdAt: v.number(),
+    })
+      .index("by_status", ["status"])
+      .index("by_maker", ["makerWalletId"]),
+
+    // The vault (launchpad): shielded tokens anyone can deploy.
+    vaultTokens: defineTable({
+      ticker: v.string(),
+      name: v.string(),
+      maxSupply: v.number(),
+      mintedTokens: v.number(),
+      priceLamportsPerKilo: v.number(),
+      mintOpen: v.boolean(),
+      creator: v.string(),
+      createdAt: v.number(),
+      holders: v.number(),
+    }).index("by_ticker", ["ticker"]),
+
+    vaultBalances: defineTable({
+      tokenId: v.id("vaultTokens"),
+      walletId: v.id("wallets"),
+      amount: v.number(),
+    }).index("by_wallet_token", ["walletId", "tokenId"]),
+
+    // Trades: SOL leg is escrowed at fill; the shielded leg settles from the
+    // seller's browser, which alone can spend its notes.
+    trades: defineTable({
+      buyOrderId: v.optional(v.id("orders")),
+      sellOrderId: v.optional(v.id("orders")),
+      buyerWalletId: v.id("wallets"),
+      sellerWalletId: v.id("wallets"),
+      tokens: v.number(),
+      lamports: v.number(), // gross SOL leg, escrowed at fill
+      feeLamports: v.number(),
+      status: v.string(), // "pending_settlement" | "settled"
+      shieldedEnvelopeId: v.optional(v.id("envelopes")),
+      createdAt: v.number(),
+    })
+      .index("by_seller", ["sellerWalletId"])
+      .index("by_buyer", ["buyerWalletId"]),
   },
   {
     schemaValidation: false,
