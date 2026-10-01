@@ -31,7 +31,7 @@ import {
   sealNoteFor,
 } from "@/lib/wallet";
 import { buildProof } from "@/lib/wallet";
-import { useS404 } from "@/lib/s404-context";
+import { useSolzk } from "@/lib/solzk-context";
 import {
   ArrowRight,
   BadgeCheck,
@@ -73,9 +73,9 @@ function useNow(intervalMs = 1000) {
 // Wallet setup: create / restore / unlock
 // ---------------------------------------------------------------------------
 
-function WalletSetup({ s404 }: { s404: ReturnType<typeof useS404> }) {
+function WalletSetup({ slk }: { slk: ReturnType<typeof useSolzk> }) {
   const [mode, setMode] = useState<"create" | "restore" | "unlock">(
-    s404.phase === "locked" ? "unlock" : "create",
+    slk.phase === "locked" ? "unlock" : "create",
   );
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -92,7 +92,7 @@ function WalletSetup({ s404 }: { s404: ReturnType<typeof useS404> }) {
     }
     setBusy(true);
     try {
-      const w = await s404.createWallet(password);
+      const w = await slk.createWallet(password);
       setWords(w);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to create wallet");
@@ -117,12 +117,12 @@ function WalletSetup({ s404 }: { s404: ReturnType<typeof useS404> }) {
     }
     setBusy(true);
     try {
-      const ok = await s404.restoreWallet(list, password);
+      const ok = await slk.restoreWallet(list, password);
       if (ok) {
         setRestored(true);
         toast.success("Wallet restored.");
       } else {
-        toast.error(s404.error ?? "Restore failed.");
+        toast.error(slk.error ?? "Restore failed.");
       }
     } finally {
       setBusy(false);
@@ -132,8 +132,8 @@ function WalletSetup({ s404 }: { s404: ReturnType<typeof useS404> }) {
   const handleUnlock = async () => {
     setBusy(true);
     try {
-      const ok = await s404.unlock(password);
-      if (!ok) toast.error(s404.error ?? "Wrong password.");
+      const ok = await slk.unlock(password);
+      if (!ok) toast.error(slk.error ?? "Wrong password.");
     } finally {
       setBusy(false);
     }
@@ -323,11 +323,11 @@ function WalletSetup({ s404 }: { s404: ReturnType<typeof useS404> }) {
                 Restore from 24 words
               </button>
             )}
-            {s404.phase === "locked" && (
+            {slk.phase === "locked" && (
               <button
                 className="text-muted-foreground hover:text-destructive"
                 onClick={() => {
-                  s404.forgetWallet();
+                  slk.forgetWallet();
                   setMode("create");
                   toast.info(
                     "Encrypted seed removed from this device. Your words still restore it.",
@@ -349,22 +349,22 @@ function WalletSetup({ s404 }: { s404: ReturnType<typeof useS404> }) {
 // Registration + faucet
 // ---------------------------------------------------------------------------
 
-function RegisterCard({ s404 }: { s404: ReturnType<typeof useS404> }) {
+function RegisterCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
   const [busy, setBusy] = useState(false);
-  const registered = s404.serverWallet !== null && s404.serverWallet !== undefined;
+  const registered = slk.serverWallet !== null && slk.serverWallet !== undefined;
 
   const register = async () => {
     setBusy(true);
     try {
-      await s404.registerOnChain(FAUCET_LAMPORTS);
+      await slk.registerOnChain(FAUCET_LAMPORTS);
       toast.success(
         "Wallet registered on the ledger. 10 devnet SOL deposited.",
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Registration failed";
-      if (msg.includes("already holds an S404 wallet")) {
+      if (msg.includes("already holds an SOLZK wallet")) {
         toast.error(
-          "This account already holds an S404 wallet — one account, one wallet. Open the dashboard to see it.",
+          "This account already holds an SOLZK wallet — one account, one wallet. Open the dashboard to see it.",
         );
       } else {
         toast.error(msg);
@@ -381,7 +381,7 @@ function RegisterCard({ s404 }: { s404: ReturnType<typeof useS404> }) {
           <Wallet className="size-6" />
         </div>
         <h2 className="mt-4 text-lg font-semibold">
-          {registered ? "You hold an S404 wallet" : "Register your wallet"}
+          {registered ? "You hold an SOLZK wallet" : "Register your wallet"}
         </h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           {registered
@@ -412,14 +412,14 @@ function RegisterCard({ s404 }: { s404: ReturnType<typeof useS404> }) {
 // ---------------------------------------------------------------------------
 
 function MintForm({
-  s404,
+  slk,
   onInvoiceOpened,
 }: {
-  s404: ReturnType<typeof useS404>;
+  slk: ReturnType<typeof useSolzk>;
   onInvoiceOpened: (invoiceId: string) => void;
 }) {
-  const wallet = s404.serverWallet;
-  const protocol = s404.protocol;
+  const wallet = slk.serverWallet;
+  const protocol = slk.protocol;
   const openInvoiceMut = useMutation(api.protocol.openInvoice);
 
   const [lots, setLots] = useState(1);
@@ -443,7 +443,7 @@ function MintForm({
   const totalLamports = lotPriceLamports(tier, lots);
 
   const open = async () => {
-    if (!s404.address || !s404.seedHex) {
+    if (!slk.address || !slk.seedHex) {
       toast.error("Unlock your wallet first.");
       return;
     }
@@ -451,12 +451,12 @@ function MintForm({
     try {
       const r = crypto.randomUUID();
       const value = lots * LOT_SIZE;
-      const sealed = await sealNoteFor(s404.address, {
+      const sealed = await sealNoteFor(slk.address, {
         value,
         memo: "mint",
         r,
       });
-      const commitment = await commitmentFor(value, r, s404.address);
+      const commitment = await commitmentFor(value, r, slk.address);
       const res = await openInvoiceMut({
         lots,
         tier,
@@ -470,164 +470,255 @@ function MintForm({
     } finally {
       setBusy(false);
     }
-  };
+  };  if (!wallet) return null;
 
-  if (!wallet) return null;
+  const mintedPct = (
+    ((protocol?.mintedTokens ?? 0) / TOTAL_SUPPLY) *
+    100
+  ).toFixed(2);
+  const feeLamports = Math.ceil((totalLamports * 500) / 10_000);
 
   return (
-    <div className="mx-auto grid max-w-4xl gap-6 lg:grid-cols-[1fr_340px]">
-      <Card>
-        <CardContent className="p-8">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Choose how much</h2>
-            <GradientBadge>
-              {approved ? (
-                <>
-                  <BadgeCheck className="size-3.5" /> Approved rate
-                </>
-              ) : (
-                "Open rate"
-              )}
-            </GradientBadge>
-          </div>
-
-          <div className="mt-6 flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setLots((v) => Math.max(1, v - 1))}
-              disabled={lots <= 1}
-            >
-              −
-            </Button>
-            <Input
-              type="number"
-              min={1}
-              max={maxLotsNow}
-              value={lots}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                if (Number.isFinite(v))
-                  setLots(Math.max(1, Math.min(maxLotsNow || 1, Math.floor(v))));
-              }}
-              className="h-12 text-center font-mono-tabular text-lg"
-            />
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setLots((v) => Math.min(maxLotsNow, v + 1))}
-              disabled={lots >= maxLotsNow}
-            >
-              +
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              lots of {formatTokenAmount(LOT_SIZE)}
-            </span>
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            {[1, 5, 10, 25, 100].map((n) => (
-              <Button
-                key={n}
-                variant="secondary"
-                size="sm"
-                disabled={n > maxLotsNow}
-                onClick={() => setLots(n)}
-              >
-                {n} lot{n > 1 ? "s" : ""}
-              </Button>
-            ))}
-          </div>
-
-          <div className="mt-6 space-y-2 rounded-xl border border-border/70 bg-background p-4 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Rate</span>
-              <span className="font-mono-tabular">
-                {lamportsToSol(perLot)} SOL / lot
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">You receive</span>
-              <span className="font-mono-tabular">
-                {formatTokenAmount(lots * LOT_SIZE)} {TICKER}
-              </span>
-            </div>
-            <div className="flex justify-between border-t border-border/60 pt-2 text-base font-semibold">
-              <span>Total</span>
-              <span className="font-mono-tabular text-primary">
-                {lamportsToSol(totalLamports)} SOL
-              </span>
-            </div>
-            <p className="pt-1 text-xs text-muted-foreground">
-              A one-time deposit address reserves this invoice for 60 minutes.
-              The relayer publishes the envelope from its own coins — your SOL
-              never sits in the same transaction.
+    <div className="mx-auto max-w-4xl space-y-6">
+      {/* Issuance parameters — the terminal-style panel */}
+      <div className="rounded-xl border border-primary/25 bg-card/60">
+        <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
+          <p className="font-mono-tabular text-[11px] font-semibold uppercase tracking-[0.25em] text-primary">
+            Issuance parameters
+          </p>
+          <span className="rounded border border-primary/40 px-2 py-0.5 font-mono-tabular text-[11px] text-primary">
+            {TICKER}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 divide-x divide-border/40 lg:grid-cols-4">
+          <div className="p-5">
+            <p className="font-mono-tabular text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              Approved rate
+            </p>
+            <p className="mt-1.5 font-mono-tabular text-2xl font-semibold text-primary">
+              {lamportsToSol(APPROVED_RATE_LAMPORTS)} SOL
+            </p>
+            <p className="mt-1 font-mono-tabular text-[11px] text-muted-foreground">
+              10,000 {TICKER} · 0.015 SOL
             </p>
           </div>
-
-          <Button
-            className="mt-6 w-full bg-sol-gradient py-6 font-semibold text-[#04101a] hover:opacity-90"
-            disabled={busy || lots < 1 || lots > maxLotsNow}
-            onClick={open}
-          >
-            {busy ? (
-              <Loader2 className="mr-2 size-4 animate-spin" />
-            ) : (
-              <FileCheck className="mr-2 size-4" />
-            )}
-            Open invoice for {lots} lot{lots > 1 ? "s" : ""}
-          </Button>
-
-          <p className="mt-4 text-xs leading-5 text-muted-foreground">
-            Caps are per wallet and counted across every invoice you open:{" "}
-            {lotsLeft} of {cap} lots left on the {tier} rate. Minting is first
-            come, first served until the supply is gone.
-          </p>
-        </CardContent>
-      </Card>
-
-      <div className="space-y-4">
-        <Stat
-          label="Your devnet SOL"
-          value={`${lamportsToSol(wallet.fundingLamports)} SOL`}
-          accent
-          sub={
-            <button
-              className="inline-flex items-center gap-1 text-primary hover:underline"
-              onClick={async () => {
-                try {
-                  await s404.topUpFaucet(10_000_000_000);
-                  toast.success("10 devnet SOL added.");
-                } catch (e) {
-                  toast.error(e instanceof Error ? e.message : "Faucet failed");
-                }
-              }}
-            >
-              <Droplets className="size-3" /> Top up with the faucet
-            </button>
-          }
-        />
-        <Stat
-          label="Shielded balance"
-          value={`${formatTokenAmount(s404.balance)} ${TICKER}`}
-          sub={s404.scanning ? "Scanning the pool…" : "Only you can read this"}
-        />
-        <Stat
-          label="Supply minted"
-          value={`${((protocol?.mintedTokens ?? 0) / TOTAL_SUPPLY * 100).toFixed(2)}%`}
-          sub={`${formatTokenAmount(remainingSupply)} ${TICKER} remaining`}
-        />
-        <div className="rounded-xl border border-border/70 bg-card p-4">
+          <div className="p-5">
+            <p className="font-mono-tabular text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              Open rate
+            </p>
+            <p className="mt-1.5 font-mono-tabular text-2xl font-semibold text-primary">
+              {lamportsToSol(OPEN_RATE_LAMPORTS)} SOL
+            </p>
+            <p className="mt-1 font-mono-tabular text-[11px] text-muted-foreground">
+              10,000 {TICKER} · 0.035 SOL
+            </p>
+          </div>
+          <div className="p-5">
+            <p className="font-mono-tabular text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              Your cap
+            </p>
+            <p className="mt-1.5 font-mono-tabular text-2xl font-semibold">
+              {formatTokenAmount(cap * LOT_SIZE)}
+            </p>
+            <p className="mt-1 font-mono-tabular text-[11px] text-muted-foreground">
+              {TICKER} max · {cap} lots
+            </p>
+          </div>
+          <div className="p-5">
+            <p className="font-mono-tabular text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              Minted
+            </p>
+            <p className="mt-1.5 font-mono-tabular text-2xl font-semibold">
+              {mintedPct}%
+            </p>
+            <p className="mt-1 font-mono-tabular text-[11px] text-muted-foreground">
+              {formatTokenAmount(protocol?.mintedTokens ?? 0)} /{" "}
+              {formatTokenAmount(TOTAL_SUPPLY)}
+            </p>
+          </div>
+        </div>
+        <div className="border-t border-border/60 px-5 py-4">
+          <div className="flex items-center justify-between font-mono-tabular text-[11px] text-muted-foreground">
+            <span className="uppercase tracking-[0.2em]">Supply issued</span>
+            <span>
+              {formatTokenAmount(protocol?.mintedTokens ?? 0)} /{" "}
+              {formatTokenAmount(TOTAL_SUPPLY)} · {mintedPct}%
+            </span>
+          </div>
           <Progress
             value={((protocol?.mintedTokens ?? 0) / TOTAL_SUPPLY) * 100}
-            className="h-2"
+            className="mt-2 h-1.5"
           />
-          <p className="mt-3 text-xs leading-5 text-muted-foreground">
-            {formatTokenAmount(TOTAL_LOTS)} lots exist. When the last one is
-            minted, the market opens and the mint never comes back.
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Amount minted is public; the recipient is not.
           </p>
         </div>
-        <Stat label="Envelope" value={`${ENVELOPE_MINT_BYTES} bytes`} sub="Uniform mint size — the amount is inside, sealed" />
+      </div>
+
+      {/* Acquisition */}
+      <div className="rounded-xl border border-border/70 bg-card">
+        <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
+          <p className="font-mono-tabular text-[11px] font-semibold uppercase tracking-[0.25em] text-foreground">
+            Acquisition
+          </p>
+          <span className="rounded border border-border px-2 py-0.5 font-mono-tabular text-[11px] uppercase tracking-wider text-muted-foreground">
+            {tier} rate
+          </span>
+        </div>
+        <CardContent className="p-6">
+          <h2 className="text-lg font-semibold">Size the purchase</h2>
+
+          <div className="mt-5 grid gap-6 sm:grid-cols-[1fr_240px]">
+            <div>
+              <p className="font-mono-tabular text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                Lots
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <Input
+                  type="number"
+                  min={1}
+                  max={maxLotsNow}
+                  value={lots}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (Number.isFinite(v))
+                      setLots(
+                        Math.max(1, Math.min(maxLotsNow || 1, Math.floor(v))),
+                      );
+                  }}
+                  className="h-11 w-24 text-center font-mono-tabular text-lg"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-11 px-4 font-mono-tabular"
+                  disabled={maxLotsNow <= 0}
+                  onClick={() => setLots(maxLotsNow)}
+                >
+                  MAX {maxLotsNow}
+                </Button>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {[1, 5, 10, 25, 100].map((n) => (
+                  <Button
+                    key={n}
+                    variant="secondary"
+                    size="sm"
+                    disabled={n > maxLotsNow}
+                    onClick={() => setLots(n)}
+                  >
+                    {n}
+                  </Button>
+                ))}
+              </div>
+
+              <div className="mt-5 space-y-1.5 font-mono-tabular text-xs text-muted-foreground">
+                <div className="flex justify-between">
+                  <span>
+                    {lots} lot{lots > 1 ? "s" : ""} ·{" "}
+                    {lamportsToSol(perLot)} SOL
+                  </span>
+                  <span>{lamportsToSol(totalLamports)} SOL</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>protocol fee · 5% (2.5% to the vault)</span>
+                  <span>{lamportsToSol(feeLamports)} SOL</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>devnet network fee (once per mint)</span>
+                  <span>0.00005 SOL</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>
+                    allocation {wallet.lotsMinted + 1} / {cap} · max {cap} per
+                    invoice set
+                  </span>
+                  <span />
+                </div>
+              </div>
+
+              <Button
+                className="mt-6 w-full bg-sol-gradient py-6 font-semibold text-[#04101a] hover:opacity-90"
+                disabled={busy || lots < 1 || lots > maxLotsNow}
+                onClick={open}
+              >
+                {busy ? (
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                ) : (
+                  <FileCheck className="mr-2 size-4" />
+                )}
+                Open invoice
+              </Button>
+
+              <p className="mt-4 text-[11px] leading-5 text-muted-foreground">
+                Caps are per wallet across every invoice: {lotsLeft} of {cap}{" "}
+                lots left on the {tier} rate. First come, first served.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-background p-4 text-right">
+              <p className="font-mono-tabular text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                You receive
+              </p>
+              <p className="mt-1 font-mono-tabular text-3xl font-semibold text-primary">
+                {formatTokenAmount(lots * LOT_SIZE)}
+              </p>
+              <p className="font-mono-tabular text-xs text-muted-foreground">
+                {TICKER}
+              </p>
+              <p className="mt-4 font-mono-tabular text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                You pay
+              </p>
+              <p className="mt-1 font-mono-tabular text-2xl font-semibold">
+                {lamportsToSol(totalLamports + 5_000)} SOL
+              </p>
+              <p className="mt-1 font-mono-tabular text-[11px] text-muted-foreground">
+                incl. fees · devnet
+              </p>
+              <div className="mt-4 border-t border-border/60 pt-3 text-left font-mono-tabular text-[11px] text-muted-foreground">
+                <p>
+                  Your devnet SOL:{" "}
+                  <span className="text-foreground">
+                    {lamportsToSol(wallet.fundingLamports)}
+                  </span>
+                </p>
+                <button
+                  className="mt-1 inline-flex items-center gap-1 text-primary hover:underline"
+                  onClick={async () => {
+                    try {
+                      await slk.topUpFaucet(10_000_000_000);
+                      toast.success("10 devnet SOL added.");
+                    } catch (e) {
+                      toast.error(
+                        e instanceof Error ? e.message : "Faucet failed",
+                      );
+                    }
+                  }}
+                >
+                  <Droplets className="size-3" /> Top up with the faucet
+                </button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Stat
+          label="Shielded balance"
+          value={`${formatTokenAmount(slk.balance)} ${TICKER}`}
+          sub={slk.scanning ? "Scanning the pool…" : "Only you can read this"}
+        />
+        <Stat
+          label="Vault fee pool"
+          value={`${lamportsToSol(slk.vaultPool?.feePoolLamports ?? 0)} SOL`}
+          sub="2.5% of every mint goes to depositors"
+        />
+        <Stat
+          label="Envelope"
+          value={`${ENVELOPE_MINT_BYTES} bytes`}
+          sub="Uniform mint size — the amount is inside, sealed"
+        />
       </div>
     </div>
   );
@@ -638,11 +729,11 @@ function MintForm({
 // ---------------------------------------------------------------------------
 
 function InvoiceFlow({
-  s404,
+  slk,
   invoiceId,
   onDone,
 }: {
-  s404: ReturnType<typeof useS404>;
+  slk: ReturnType<typeof useSolzk>;
   invoiceId: string;
   onDone: () => void;
 }) {
@@ -673,7 +764,7 @@ function InvoiceFlow({
   // The mint has no button: the moment the payment settles, the browser
   // builds the proof and hands the envelope to the relayer.
   useEffect(() => {
-    if (!invoice || invoice.status !== "seen" || !s404.address) return;
+    if (!invoice || invoice.status !== "seen" || !slk.address) return;
     if (confirmations < CONFIRMATIONS_REQUIRED) return;
     if (settlingRef.current) return;
     settlingRef.current = true;
@@ -682,7 +773,7 @@ function InvoiceFlow({
       try {
         const r = invoice.noteR;
         const value = invoice.lots * LOT_SIZE;
-        const sealed = await sealNoteFor(s404.address!, {
+        const sealed = await sealNoteFor(slk.address!, {
           value,
           memo: "mint",
           r,
@@ -694,7 +785,7 @@ function InvoiceFlow({
         );
         const { proof } = await buildProof(payload);
         await settleInvoiceMut({ invoiceId: invoice._id, proof, payload });
-        s404.refreshNotes();
+        slk.refreshNotes();
         toast.success(`${formatTokenAmount(value)} ${TICKER} minted.`);
         onDone();
       } catch (e) {
@@ -706,7 +797,7 @@ function InvoiceFlow({
         settlingRef.current = false;
       }
     })();
-  }, [invoice, confirmations, s404, settleInvoiceMut, onDone]);
+  }, [invoice, confirmations, slk, settleInvoiceMut, onDone]);
 
   if (!invoice) {
     return (
@@ -893,10 +984,10 @@ function InvoiceFlow({
 // ---------------------------------------------------------------------------
 
 function MintPageInner() {
-  const s404 = useS404();
+  const slk = useSolzk();
   const invoices = useQuery(
     api.protocol.listMyInvoices,
-    s404.serverWallet ? {} : "skip",
+    slk.serverWallet ? {} : "skip",
   );
   const [activeInvoice, setActiveInvoice] = useState<string | null>(null);
 
@@ -916,20 +1007,20 @@ function MintPageInner() {
   }, [activeInvoice, resumable]);
 
   let body: React.ReactNode;
-  if (s404.phase === "locked" || s404.phase === "none") {
-    body = <WalletSetup s404={s404} />;
-  } else if (!s404.address) {
+  if (slk.phase === "locked" || slk.phase === "none") {
+    body = <WalletSetup slk={slk} />;
+  } else if (!slk.address) {
     body = (
       <div className="flex justify-center py-16">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
       </div>
     );
-  } else if (!s404.serverWallet) {
-    body = <RegisterCard s404={s404} />;
+  } else if (!slk.serverWallet) {
+    body = <RegisterCard slk={slk} />;
   } else if (activeInvoice) {
     body = (
       <InvoiceFlow
-        s404={s404}
+        slk={slk}
         invoiceId={activeInvoice}
         onDone={() => setActiveInvoice(null)}
       />
@@ -937,7 +1028,7 @@ function MintPageInner() {
   } else {
     body = (
       <MintForm
-        s404={s404}
+        slk={slk}
         onInvoiceOpened={(id) => setActiveInvoice(id)}
       />
     );
@@ -967,7 +1058,7 @@ export default function MintPage() {
   return (
     <RequireAuth
       title="Sign in to mint"
-      description="Your S404 wallet lives inside your account. Sign in to create or unlock it."
+      description="Your SOLZK wallet lives inside your account. Sign in to create or unlock it."
     >
       <SiteLayout>
         <MintPageInner />

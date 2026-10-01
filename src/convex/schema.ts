@@ -128,7 +128,7 @@ const schema = defineSchema(
     orders: defineTable({
       makerWalletId: v.id("wallets"),
       side: v.string(), // "buy" | "sell"
-      priceLamportsPerKilo: v.number(), // lamports per 1,000 S404
+      priceLamportsPerKilo: v.number(), // lamports per 1,000 SOLZK
       amountTokens: v.number(),
       filledTokens: v.number(),
       status: v.string(), // "open" | "filled" | "cancelled"
@@ -162,6 +162,8 @@ const schema = defineSchema(
       // Fee pool awaiting distribution (lamports, from mint + trade fees).
       feePoolLamports: v.number(),
       feesDistributedLamports: v.number(),
+      // Cumulative fees per share, fixed-point 1e12 — pro-rata payout base.
+      feePerShare: v.number(),
       updatedAt: v.number(),
     }).index("by_key", ["key"]),
 

@@ -3,10 +3,12 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
   ensureProtocolState,
+  ensureVaultPool,
   getWalletForUser,
   getWalletForUserOrThrow,
   protocolStateOrDefault,
   requireUserId,
+  routeFee,
 } from "./backendHelpers";
 import { sha256Hex } from "./sha256";
 import {
@@ -16,13 +18,14 @@ import {
   ENVELOPE_MINT_BYTES,
   ENVELOPE_TRANSFER_BYTES,
   LOT_SIZE,
+  MINT_FEE_BPS,
   OPEN_MAX_LOTS,
   OPEN_RATE_LAMPORTS,
+  RELAYER_FEE_LAMPORTS,
   type RateTier,
   hexHashOf,
 } from "../lib/protocol";
 
-const PROTOCOL_FEE_LAMPORTS = 5_000; // 0.00005 SOL — the relayer's published fee
 const ADDRESS_LEN = 44;
 
 /** Sealed-note ciphertext size: 512 bytes → the 934-byte mint envelope. */
@@ -63,7 +66,7 @@ function base64DecodeToString(s: string): string {
 }
 
 /**
- * Envelope format: `S404|<kind>|<b64len>|<b64(json)>` zero-padded to the
+ * Envelope format: `SOLZK|<kind>|<b64len>|<b64(json)>` zero-padded to the
  * uniform size (934 bytes for a mint, 921 for a transfer). The explicit
  * length makes the padding unambiguous.
  */
@@ -72,7 +75,7 @@ export function buildEnvelope(
   sealed: SealedObj,
 ): string {
   const b64 = b64UrlSafe(btoa(JSON.stringify(sealed)));
-  const prefix = `S404|${kind}|${b64.length}|`;
+  const prefix = `SOLZK|${kind}|${b64.length}|`;
   const totalHexBytes =
     kind === "mint" ? ENVELOPE_MINT_BYTES : ENVELOPE_TRANSFER_BYTES;
   let payload = prefix + b64;
@@ -87,7 +90,7 @@ export function buildEnvelope(
 export function parseSealed(payload: string): SealedObj | null {
   try {
     const parts = payload.split("|");
-    if (parts.length !== 4 || parts[0] !== "S404") return null;
+    if (parts.length !== 4 || parts[0] !== "SOLZK") return null;
     if (parts[1] !== "mint" && parts[1] !== "transfer") return null;
     const len = Number(parts[2]);
     if (!Number.isInteger(len) || len < 0 || len > parts[3].length) return null;
@@ -138,7 +141,8 @@ export const getState = query({
       marketOpen: state.marketOpen,
       genesisMs: state.genesisMs,
       currentSlot: nowSlot(state.genesisMs),
-      feeLamportsCollected: state.feeLamportsCollected,
+      treasuryLamports: state.treasuryLamports,
+      liquidityLamports: state.liquidityLamports,
       recentEnvelopes: envelopes.map((e) => ({
         _id: e._id,
         kind: e.kind,
@@ -165,7 +169,6 @@ export const getMyWallet = query({
     const wallet = await getWalletForUser(ctx, userId);
     if (!wallet) return null;
     const state = await protocolStateOrDefault(ctx);
-    const lotsMinted = wallet.lotsMinted;
     // Approved tier = the first 200 wallets — same rule the node enforces
     // when an invoice is opened.
     const faucetUsers = await ctx.db
@@ -179,9 +182,9 @@ export const getMyWallet = query({
       address: wallet.address,
       fundingLamports: wallet.fundingLamports,
       faucetTotalLamports: wallet.faucetTotalLamports,
-      lotsMinted,
+      lotsMinted: wallet.lotsMinted,
       approved,
-      mintedTokens: lotsMinted * state.lotSize,
+      mintedTokens: wallet.lotsMinted * state.lotSize,
       createdAt: wallet.createdAt,
     };
   },
@@ -208,7 +211,7 @@ export const registerWallet = mutation({
       .first();
     if (existing) {
       throw new Error(
-        "This account already holds an S404 wallet. One account, one wallet.",
+        "This account already holds a SOLZK wallet. One account, one wallet.",
       );
     }
     const byAddress = await ctx.db
@@ -233,7 +236,7 @@ export const registerWallet = mutation({
       sealed: {
         ephemeral: "faucet",
         nonce: "faucet",
-        ciphertext: hexHashOf(`s404-faucet:${address}:${fundingLamports}`),
+        ciphertext: hexHashOf(`solzk-faucet:${address}:${fundingLamports}`),
       },
       slot: nowSlot(state.genesisMs),
       createdAt: Date.now(),
@@ -285,8 +288,7 @@ export const openInvoice = mutation({
       throw new Error("That many lots would exceed the supply cap.");
     }
 
-    // Approved tier: the first 200 wallets to use the devnet faucet. A price,
-    // not a guarantee — approval does not reserve supply.
+    // Approved tier: the first 200 wallets. A price, not a guarantee.
     const faucetUsers = await ctx.db
       .query("wallets")
       .withIndex("by_creation", (q) => q.lt("createdAt", 9e15))
@@ -297,10 +299,10 @@ export const openInvoice = mutation({
       tier === "approved" && isApproved
         ? APPROVED_RATE_LAMPORTS
         : OPEN_RATE_LAMPORTS;
-    const effTier: RateTier = tier === "approved" && isApproved ? "approved" : "open";
+    const effTier: RateTier =
+      tier === "approved" && isApproved ? "approved" : "open";
     const lamports = perLot * lots;
 
-    // Per-wallet cap across every invoice ever opened.
     const cap = effTier === "approved" ? APPROVED_MAX_LOTS : OPEN_MAX_LOTS;
     if (wallet.lotsMinted + lots > cap) {
       throw new Error(
@@ -308,9 +310,8 @@ export const openInvoice = mutation({
       );
     }
 
-    // One-time deposit address, unique to this invoice.
     const depositAddress = hexHashOf(
-      `s404-deposit:${wallet.address}:${Date.now()}:${Math.random()}`,
+      `solzk-deposit:${wallet.address}:${Date.now()}:${Math.random()}`,
     ).slice(0, ADDRESS_LEN);
 
     const id = await ctx.db.insert("invoices", {
@@ -318,10 +319,10 @@ export const openInvoice = mutation({
       lots,
       lamports,
       tier: effTier,
-      depositAddress,
-      status: "awaiting_payment",
       commitment,
       noteR,
+      depositAddress,
+      status: "awaiting_payment",
       createdAt: Date.now(),
       expiresAt: Date.now() + 60 * 60 * 1000,
     });
@@ -331,7 +332,7 @@ export const openInvoice = mutation({
 
 /**
  * Pay an invoice from the wallet's unshielded SOL — builds, signs and
- * broadcasts in one step, exactly like pressing Pay in the reference flow.
+ * broadcasts in one step.
  */
 export const payInvoice = mutation({
   args: { invoiceId: v.id("invoices") },
@@ -348,7 +349,7 @@ export const payInvoice = mutation({
     if (Date.now() > invoice.expiresAt) {
       throw new Error("Invoice expired — open a new one.");
     }
-    if (wallet.fundingLamports < invoice.lamports + PROTOCOL_FEE_LAMPORTS) {
+    if (wallet.fundingLamports < invoice.lamports + RELAYER_FEE_LAMPORTS) {
       throw new Error("Insufficient SOL — use the faucet to top up.");
     }
     await ctx.db.patch(invoiceId, {
@@ -361,10 +362,14 @@ export const payInvoice = mutation({
 });
 
 /**
- * The settlement tick: called by the client while the mint page is open.
- * Advances an invoice from "seen" through 3 confirmations to minting.
- * There is no button — the moment the payment settles, the browser builds
- * the proof and hands the envelope to the relayer, which publishes it.
+ * The settlement tick. Advances an invoice from "seen" through 3
+ * confirmations to minting. There is no button — the moment the payment
+ * settles, the browser builds the proof and hands the envelope to the
+ * relayer, which publishes it.
+ *
+ * Fee routing on mint: 5% of the mint price is the protocol fee. Half goes
+ * to the vault fee pool (depositors, like LP fees), half to the treasury.
+ * The other 95% is reserved as protocol liquidity inside the vault.
  */
 export const settleInvoice = mutation({
   args: {
@@ -395,7 +400,7 @@ export const settleInvoice = mutation({
     }
 
     // Verify the proof commits to the payload (relayer-side verification).
-    const expected = sha256Hex(sha256Hex(payload) + "s404-circuit-v1");
+    const expected = sha256Hex(sha256Hex(payload) + "solzk-circuit-v1");
     if (expected !== proof) {
       throw new Error("Proof rejected: it does not commit to these bytes.");
     }
@@ -415,17 +420,28 @@ export const settleInvoice = mutation({
       throw new Error("Sealed note ciphertext must be 512 bytes.");
     }
     const expectedCommitment = sha256Hex(
-      `s404-note:${invoice.lots * LOT_SIZE}:${invoice.noteR}:${wallet.address}`,
+      `solzk-note:${invoice.lots * LOT_SIZE}:${invoice.noteR}:${wallet.address}`,
     );
     if (expectedCommitment !== invoice.commitment) {
-      throw new Error("Commitment mismatch — envelope does not bind the invoice.");
+      throw new Error(
+        "Commitment mismatch — envelope does not bind the invoice.",
+      );
     }
 
     // Deduct payment + relayer fee.
-    const total = invoice.lamports + PROTOCOL_FEE_LAMPORTS;
+    const total = invoice.lamports + RELAYER_FEE_LAMPORTS;
     if (wallet.fundingLamports < total) {
       throw new Error("Insufficient SOL at settlement.");
     }
+
+    // ---- Fee routing -------------------------------------------------
+    // 5% of the mint price is the protocol fee: half to the vault fee pool
+    // (depositors), half to the treasury. The other 95% becomes protocol
+    // liquidity inside the vault, backstopping withdrawals.
+    const mintFee = Math.ceil((invoice.lamports * MINT_FEE_BPS) / 10_000);
+    const liquidityCut = invoice.lamports - mintFee;
+    const pool = await ensureVaultPool(ctx);
+    await routeFee(ctx, state, pool, mintFee);
 
     const slot = nowSlot(state.genesisMs);
     const signature =
@@ -436,7 +452,7 @@ export const settleInvoice = mutation({
       signature,
       slot,
       payloadSize: ENVELOPE_MINT_BYTES,
-      feeLamports: PROTOCOL_FEE_LAMPORTS,
+      feeLamports: mintFee,
       payload,
       proof,
       invoiceId,
@@ -458,17 +474,24 @@ export const settleInvoice = mutation({
     });
     await ctx.db.patch(state._id, {
       mintedTokens: state.mintedTokens + invoice.lots * LOT_SIZE,
-      feeLamportsCollected: state.feeLamportsCollected + PROTOCOL_FEE_LAMPORTS,
+      liquidityLamports: state.liquidityLamports + liquidityCut,
     });
 
-    return { status: "minted", confirmations: 3, minted: true, envelopeId, signature };
+    return {
+      status: "minted",
+      confirmations: 3,
+      minted: true,
+      envelopeId,
+      signature,
+    };
   },
 });
 
 /**
  * Shielded transfer: spend notes by nullifier, create a sealed note for the
  * receiver. The ledger can link neither the nullifier to the commitment nor
- * the new note to the sender.
+ * the new note to the sender. The 2% market fee applies to transfers too —
+ * half to the vault fee pool, half to the treasury.
  */
 export const sendPrivate = mutation({
   args: {
@@ -510,7 +533,8 @@ export const sendPrivate = mutation({
         .query("nullifiers")
         .withIndex("by_value", (q) => q.eq("value", n))
         .first();
-      if (existing) throw new Error("Nullifier already seen — double spend blocked.");
+      if (existing)
+        throw new Error("Nullifier already seen — double spend blocked.");
     }
     if (args.sealedNote.ciphertext.length !== CIPHERTEXT_B64_LEN) {
       throw new Error("Sealed note ciphertext must be 512 bytes.");
@@ -527,10 +551,15 @@ export const sendPrivate = mutation({
     // Verify the proof commits to the payload parts — including the new
     // commitments, so a published note cannot be swapped after the fact.
     const statement = `${args.nullifiers.join(",")}|${args.receiver}|${args.amount}|${args.receiverCommitment}|${JSON.stringify(args.sealedNote)}`;
-    const expected = sha256Hex(sha256Hex(statement) + "s404-circuit-v1");
+    const expected = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
     if (expected !== args.proof) {
       throw new Error("Proof rejected: it does not commit to these bytes.");
     }
+
+    // 2% protocol fee on every transfer, routed like every other fee.
+    const transferFee = Math.ceil((args.amount * 200) / 10_000);
+    const pool = await ensureVaultPool(ctx);
+    await routeFee(ctx, state, pool, transferFee);
 
     const slot = nowSlot(state.genesisMs);
     const signature = hexHashOf(
@@ -542,7 +571,7 @@ export const sendPrivate = mutation({
       signature,
       slot,
       payloadSize: ENVELOPE_TRANSFER_BYTES,
-      feeLamports: PROTOCOL_FEE_LAMPORTS,
+      feeLamports: transferFee,
       payload: buildEnvelope("transfer", args.sealedNote),
       proof: args.proof,
       createdAt: Date.now(),
@@ -565,10 +594,6 @@ export const sendPrivate = mutation({
         createdAt: Date.now(),
       });
     }
-
-    await ctx.db.patch(state._id, {
-      feeLamportsCollected: state.feeLamportsCollected + PROTOCOL_FEE_LAMPORTS,
-    });
 
     return { signature, slot, envelopeId };
   },

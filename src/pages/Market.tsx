@@ -12,7 +12,7 @@ import {
   formatTokenAmount,
   lamportsToSol,
 } from "@/lib/protocol";
-import { useS404 } from "@/lib/s404-context";
+import { useSolzk } from "@/lib/solzk-context";
 import { buildProof, commitmentFor, sealNoteFor } from "@/lib/wallet";
 import {
   ArrowDownUp,
@@ -63,11 +63,11 @@ interface MyTrade {
   iAmBuyer: boolean;
 }
 
-const PRICE_MIN = 1_000; // 0.001 SOL per 1k S404
+const PRICE_MIN = 1_000; // 0.001 SOL per 1k SOLZK
 const PRICE_MAX = 100_000_000;
 
 function OrderTicket() {
-  const s404 = useS404();
+  const slk = useSolzk();
   const place = useMutation(api.market.placeOrder);
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [price, setPrice] = useState("10000");
@@ -150,7 +150,7 @@ function OrderTicket() {
             className="w-full bg-sol-gradient py-5 font-semibold text-[#04101a] hover:opacity-90"
             disabled={
               busy ||
-              !s404.address ||
+              !slk.address ||
               priceNum < PRICE_MIN ||
               priceNum > PRICE_MAX ||
               amountNum < 1000
@@ -286,7 +286,7 @@ function SettleButton({ trade }: { trade: MyTrade }) {
 }
 
 function MarketInner() {
-  const s404 = useS404();
+  const slk = useSolzk();
   const book = useQuery(api.market.getBook) as Book | undefined;
   const myOrders = useQuery(api.market.listMyOrders) as MyOrder[] | undefined;
   const myTrades = useQuery(api.market.listMyTrades) as MyTrade[] | undefined;
@@ -314,7 +314,7 @@ function MarketInner() {
               Orders are refused by the node, not merely hidden by the page.
               Trading opens when the mint sells out —{" "}
               {formatTokenAmount(
-                Math.max(0, TOTAL_SUPPLY - (s404.protocol?.mintedTokens ?? 0)),
+                Math.max(0, TOTAL_SUPPLY - (slk.protocol?.mintedTokens ?? 0)),
               )}{" "}
               {TICKER} still unminted.
             </p>

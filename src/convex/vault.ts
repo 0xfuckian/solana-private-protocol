@@ -3,34 +3,302 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
   ensureProtocolState,
-  protocolStateOrDefault,
+  ensureVaultPool,
   getWalletForUser,
   getWalletForUserOrThrow,
+  protocolStateOrDefault,
+  readVaultPool,
   requireUserId,
+  routeFee,
 } from "./backendHelpers";
-import { ENVELOPE_MINT_BYTES, hexHashOf } from "../lib/protocol";
 import { CIPHERTEXT_B64_LEN, buildEnvelope, parseSealed } from "./protocol";
 import { sha256Hex } from "./sha256";
+import { ENVELOPE_MINT_BYTES, hexHashOf } from "../lib/protocol";
 
 const PROTOCOL_FEE_LAMPORTS = 5_000;
 
 /**
- * The vault: every private token deployed on S404. S404 itself was issued
- * through exactly this path — a deploy operation published as an envelope.
+ * The vault pool, publicly readable: TVL, share supply, fee pool, and the
+ * accumulated fee-per-share that pro-rata payouts are computed from.
+ */
+export const getPool = query({
+  args: {},
+  handler: async (ctx) => {
+    await getAuthUserId(ctx);
+    const pool = await readVaultPool(ctx);
+    const state = await protocolStateOrDefault(ctx);
+    return {
+      depositedTokens: pool.depositedTokens,
+      totalShares: pool.totalShares,
+      feePoolLamports: pool.feePoolLamports,
+      feesDistributedLamports: pool.feesDistributedLamports,
+      feePerShare: pool.feePerShare,
+      // Protocol liquidity inside the vault (95% of every mint).
+      liquidityLamports: state.liquidityLamports,
+      treasuryLamports: state.treasuryLamports,
+    };
+  },
+});
+
+/** The caller's position: shares, deposit, and claimable fees. */
+export const getMyPosition = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
+    const wallet = await getWalletForUser(ctx, userId);
+    if (!wallet) return null;
+    const pool = await readVaultPool(ctx);
+    const deposit = await ctx.db
+      .query("vaultDeposits")
+      .withIndex("by_wallet", (q) => q.eq("walletId", wallet._id))
+      .first();
+    if (!deposit) {
+      return {
+        shares: 0,
+        depositedTokens: 0,
+        accumulatedFees: 0,
+        claimableLamports: 0,
+        poolSharePct: 0,
+      };
+    }
+    const share = deposit.shares / Math.max(1, pool.totalShares);
+    // Claimable = fees accrued since this position last synced, minus what
+    // has already been paid out to it.
+    const accruedTotal = Math.floor(
+      (pool.feePerShare * deposit.shares) / 1e12,
+    );
+    const claimable = Math.max(0, accruedTotal - deposit.accumulatedFees);
+    return {
+      shares: deposit.shares,
+      depositedTokens: deposit.depositedTokens,
+      accumulatedFees: deposit.accumulatedFees,
+      claimableLamports: claimable,
+      poolSharePct: share * 100,
+    };
+  },
+});
+
+/**
+ * Deposit SOLZK into the vault, like adding liquidity to a pool. Shares are
+ * minted pro rata to the existing share supply; the deposit immediately
+ * earns its proportion of the fee stream (mint fees, transfer fees, trade
+ * fees) and its claim on the protocol liquidity that backstops withdrawals.
+ *
+ * The deposit burns the depositor's notes by nullifier — the tokens move
+ * into the pool, visible only as a larger pool, never as a balance.
+ */
+export const deposit = mutation({
+  args: {
+    amountTokens: v.number(),
+    nullifiers: v.array(v.string()),
+    proof: v.string(),
+  },
+  handler: async (ctx, { amountTokens, nullifiers, proof }) => {
+    const userId = await requireUserId(ctx);
+    const wallet = await getWalletForUserOrThrow(ctx, userId);
+    const state = await ensureProtocolState(ctx);
+    const pool = await ensureVaultPool(ctx);
+
+    if (amountTokens <= 0) throw new Error("Amount must be positive.");
+    for (const n of nullifiers) {
+      const existing = await ctx.db
+        .query("nullifiers")
+        .withIndex("by_value", (q) => q.eq("value", n))
+        .first();
+      if (existing)
+        throw new Error("Nullifier already seen — double spend blocked.");
+    }
+    // The proof commits to the deposit statement.
+    const statement = `deposit:${wallet.address}:${amountTokens}:${nullifiers.join(",")}`;
+    const expected = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
+    if (expected !== proof) {
+      throw new Error("Proof rejected: it does not commit to these bytes.");
+    }
+
+    // Shares = pro rata against the existing share supply.
+    const mintedShares =
+      pool.totalShares === 0
+        ? amountTokens // first depositor: 1 share per token
+        : Math.floor((amountTokens * pool.totalShares) / Math.max(1, pool.depositedTokens));
+
+    const slot = Math.floor((Date.now() - state.genesisMs) / 400);
+    for (const n of nullifiers) {
+      await ctx.db.insert("nullifiers", { value: n, slot });
+    }
+
+    const existing = await ctx.db
+      .query("vaultDeposits")
+      .withIndex("by_wallet", (q) => q.eq("walletId", wallet._id))
+      .first();
+    if (existing) {
+      // Preserve the accrued-fee checkpoint when adding shares.
+      const accruedTotal = Math.floor(
+        (pool.feePerShare * existing.shares) / 1e12,
+      );
+      await ctx.db.patch(existing._id, {
+        shares: existing.shares + mintedShares,
+        depositedTokens: existing.depositedTokens + amountTokens,
+        accumulatedFees: accruedTotal,
+      });
+    } else {
+      await ctx.db.insert("vaultDeposits", {
+        walletId: wallet._id,
+        shares: mintedShares,
+        depositedTokens: amountTokens,
+        lamportsIn: 0,
+        accumulatedFees: 0,
+        createdAt: Date.now(),
+      });
+    }
+
+    await ctx.db.patch(pool._id, {
+      depositedTokens: pool.depositedTokens + amountTokens,
+      totalShares: pool.totalShares + mintedShares,
+      updatedAt: Date.now(),
+    });
+
+    return { shares: mintedShares };
+  },
+});
+
+/**
+ * Claim accrued fees — the vault's payout to depositors, funded by the
+ * vault's half of every mint, transfer and trade fee. Like LP fee
+ * distribution: proportional to shares, claimable at any time, no lockup.
+ */
+export const claimFees = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
+    const wallet = await getWalletForUserOrThrow(ctx, userId);
+    const pool = await ensureVaultPool(ctx);
+    const deposit = await ctx.db
+      .query("vaultDeposits")
+      .withIndex("by_wallet", (q) => q.eq("walletId", wallet._id))
+      .first();
+    if (!deposit || deposit.shares === 0) {
+      throw new Error("Nothing deposited — no fees to claim.");
+    }
+    const accruedTotal = Math.floor(
+      (pool.feePerShare * deposit.shares) / 1e12,
+    );
+    const claimable = Math.max(0, accruedTotal - deposit.accumulatedFees);
+    if (claimable <= 0) {
+      throw new Error("No fees accrued yet — deposit and wait for volume.");
+    }
+
+    await ctx.db.patch(deposit._id, {
+      accumulatedFees: accruedTotal,
+      lastClaimAt: Date.now(),
+    });
+    await ctx.db.patch(pool._id, {
+      feePoolLamports: pool.feePoolLamports - claimable,
+      feesDistributedLamports: pool.feesDistributedLamports + claimable,
+      updatedAt: Date.now(),
+    });
+    // Fees pay out in ordinary SOL, straight to the depositor's wallet.
+    await ctx.db.patch(wallet._id, {
+      fundingLamports: wallet.fundingLamports + claimable,
+    });
+    return { claimedLamports: claimable };
+  },
+});
+
+/**
+ * Withdraw from the vault: burn shares pro rata and receive a fresh sealed
+ * note back into your shielded wallet. There is no exit to ordinary SOL —
+ * value stays private, which is the whole point.
+ */
+export const withdraw = mutation({
+  args: {
+    shares: v.number(),
+    sealedNote: v.object({
+      ephemeral: v.string(),
+      nonce: v.string(),
+      ciphertext: v.string(),
+    }),
+    commitment: v.string(),
+    proof: v.string(),
+  },
+  handler: async (ctx, { shares, sealedNote, commitment, proof }) => {
+    const userId = await requireUserId(ctx);
+    const wallet = await getWalletForUserOrThrow(ctx, userId);
+    const state = await ensureProtocolState(ctx);
+    const pool = await ensureVaultPool(ctx);
+    const deposit = await ctx.db
+      .query("vaultDeposits")
+      .withIndex("by_wallet", (q) => q.eq("walletId", wallet._id))
+      .first();
+    if (!deposit || deposit.shares < shares || shares <= 0) {
+      throw new Error("Not enough shares.");
+    }
+    if (sealedNote.ciphertext.length !== CIPHERTEXT_B64_LEN) {
+      throw new Error("Sealed note ciphertext must be 512 bytes.");
+    }
+    const statement = `withdraw:${wallet.address}:${shares}:${commitment}`;
+    const expected = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
+    if (expected !== proof) {
+      throw new Error("Proof rejected: it does not commit to these bytes.");
+    }
+
+    const tokensOut = Math.floor(
+      (shares * pool.depositedTokens) / Math.max(1, pool.totalShares),
+    );
+    if (tokensOut <= 0) throw new Error("Withdrawal rounds to zero.");
+
+    const accruedTotal = Math.floor((pool.feePerShare * deposit.shares) / 1e12);
+    const remainingShares = deposit.shares - shares;
+    if (remainingShares === 0) {
+      await ctx.db.delete(deposit._id);
+    } else {
+      await ctx.db.patch(deposit._id, {
+        shares: remainingShares,
+        depositedTokens: Math.max(
+          0,
+          deposit.depositedTokens - tokensOut,
+        ),
+        accumulatedFees: Math.floor(
+          (pool.feePerShare * remainingShares) / 1e12,
+        ),
+      });
+    }
+    await ctx.db.patch(pool._id, {
+      depositedTokens: Math.max(0, pool.depositedTokens - tokensOut),
+      totalShares: pool.totalShares - shares,
+      updatedAt: Date.now(),
+    });
+
+    // The withdrawn value returns as a sealed note only the depositor can
+    // open — private in, private out.
+    await ctx.db.insert("notes", {
+      commitment,
+      sealed: sealedNote,
+      slot: Math.floor((Date.now() - state.genesisMs) / 400),
+      createdAt: Date.now(),
+    });
+
+    return { tokensOut };
+  },
+});
+
+/**
+ * The vault: every private token deployed on SOL-ZK. SOLZK itself was
+ * issued through exactly this path — a deploy operation published as an
+ * envelope.
  */
 export const listTokens = query({
   args: {},
   handler: async (ctx) => {
-    await getAuthUserId(ctx); // public read, auth optional
+    await getAuthUserId(ctx);
     const tokens = await ctx.db.query("vaultTokens").order("desc").collect();
     const state = await protocolStateOrDefault(ctx);
     const protocolToken = {
-      _id: "s404",
+      _id: "solzk",
       ticker: state.ticker,
       name: "The private SOL standard",
       maxSupply: state.totalSupply,
       mintedTokens: state.mintedTokens,
-      priceLamportsPerKilo: 10_000,
+      priceLamportsPerKilo: 35_000_000,
       mintOpen: state.mintOpen,
       isProtocolToken: true,
       creator: null as string | null,
@@ -54,23 +322,8 @@ export const listTokens = query({
   },
 });
 
-export const getBalance = query({
-  args: { tokenId: v.string() },
-  handler: async (ctx, { tokenId }) => {
-    const userId = await requireUserId(ctx);
-    const wallet = await getWalletForUserOrThrow(ctx, userId);
-    const balances = await ctx.db
-      .query("vaultBalances")
-      .withIndex("by_wallet_token", (q) => q.eq("walletId", wallet._id))
-      .collect();
-    const bal = balances.find((b) => b.tokenId === tokenId);
-    return bal?.amount ?? 0;
-  },
-});
-
 /**
- * All of the caller's vault balances in one query — the page maps token
- * ids to amounts without per-token subscriptions.
+ * All of the caller's vault-token balances in one query.
  */
 export const listMyBalances = query({
   args: {},
@@ -87,9 +340,9 @@ export const listMyBalances = query({
 });
 
 /**
- * Deploy a shielded token: ticker, maximum supply and per-mint limit,
- * published as an envelope like any other. Consensus rules are unchanged —
- * this is tooling on top of a capability the pool already has.
+ * Deploy a shielded token: ticker, maximum supply and per-mint price,
+ * published as an envelope like any other. Consensus rules need no change —
+ * this is tooling on a capability the pool already has.
  */
 export const deployToken = mutation({
   args: {
@@ -103,7 +356,7 @@ export const deployToken = mutation({
     const userId = await requireUserId(ctx);
     const wallet = await getWalletForUserOrThrow(ctx, userId);
     if (wallet.faucetTotalLamports === 0) {
-      throw new Error("The devnet faucet has not been used on this wallet yet.");
+      throw new Error("Use the devnet faucet before deploying.");
     }
     if (!/^[A-Z0-9]{2,8}$/.test(ticker)) {
       throw new Error("Ticker must be 2–8 chars, A–Z and 0–9.");
@@ -119,7 +372,7 @@ export const deployToken = mutation({
 
     const expected = sha256Hex(
       sha256Hex(`deploy:${ticker}:${maxSupply}:${priceLamportsPerKilo}`) +
-        "s404-circuit-v1",
+        "solzk-circuit-v1",
     );
     if (expected !== proof) {
       throw new Error("Proof rejected: it does not commit to these bytes.");
@@ -165,6 +418,7 @@ export const buyToken = mutation({
     const userId = await requireUserId(ctx);
     const wallet = await getWalletForUserOrThrow(ctx, userId);
     const state = await ensureProtocolState(ctx);
+    const pool = await ensureVaultPool(ctx);
     const token = await ctx.db.get(tokenId);
     if (!token) throw new Error("Token not found.");
     if (!token.mintOpen) throw new Error("This token's mint is closed.");
@@ -182,24 +436,23 @@ export const buyToken = mutation({
     }
     const expected = sha256Hex(
       sha256Hex(`vaultbuy:${tokenId}:${amountTokens}:${JSON.stringify(sealedNote)}`) +
-        "s404-circuit-v1",
+        "solzk-circuit-v1",
     );
     if (expected !== proof) {
       throw new Error("Proof rejected: it does not commit to these bytes.");
     }
-    const parsed = parseSealed(buildEnvelope("mint", sealedNote));
-    if (!parsed || parsed.ciphertext !== sealedNote.ciphertext) {
-      throw new Error("Envelope is not a well-formed sealed note.");
-    }
 
-    // Publish the mint envelope — amounts and ticker are public at mint time,
-    // because supply has to be auditable. After that, nothing is.
+    // 5% mint fee here too, routed half to depositors / half treasury; the
+    // rest joins the pool's liquidity.
+    const mintFee = Math.ceil((gross * 500) / 10_000);
+    await routeFee(ctx, state, pool, mintFee);
+
     await ctx.db.insert("envelopes", {
       kind: "mint",
       signature: hexHashOf(`vault:${tokenId}:${Date.now()}`),
       slot: Math.floor((Date.now() - state.genesisMs) / 400),
       payloadSize: ENVELOPE_MINT_BYTES,
-      feeLamports: PROTOCOL_FEE_LAMPORTS,
+      feeLamports: mintFee,
       payload: buildEnvelope("mint", sealedNote),
       proof,
       createdAt: Date.now(),
@@ -209,12 +462,11 @@ export const buyToken = mutation({
 
     const bal = await ctx.db
       .query("vaultBalances")
-      .withIndex("by_wallet_token", (q) =>
-        q.eq("walletId", wallet._id).eq("tokenId", tokenId),
-      )
-      .first();
-    if (bal) {
-      await ctx.db.patch(bal._id, { amount: bal.amount + amountTokens });
+      .withIndex("by_wallet_token", (q) => q.eq("walletId", wallet._id))
+      .collect();
+    const mine = bal.find((b) => b.tokenId === tokenId);
+    if (mine) {
+      await ctx.db.patch(mine._id, { amount: mine.amount + amountTokens });
     } else {
       await ctx.db.insert("vaultBalances", {
         tokenId,
@@ -227,6 +479,9 @@ export const buyToken = mutation({
     await ctx.db.patch(tokenId, { mintedTokens: token.mintedTokens + amountTokens });
     await ctx.db.patch(wallet._id, {
       fundingLamports: wallet.fundingLamports - (gross + PROTOCOL_FEE_LAMPORTS),
+    });
+    await ctx.db.patch(state._id, {
+      liquidityLamports: state.liquidityLamports + (gross - mintFee),
     });
 
     return { ok: true, spent: gross };

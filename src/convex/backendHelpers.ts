@@ -29,7 +29,9 @@ export async function getWalletForUserOrThrow(
 ): Promise<Doc<"wallets">> {
   const wallet = await getWalletForUser(ctx as QueryCtx, userId);
   if (!wallet)
-    throw new Error("No S404 wallet found — create one on the mint page.");
+    throw new Error(
+      "No SOLZK wallet found — create one on the mint page.",
+    );
   return wallet;
 }
 
@@ -58,7 +60,8 @@ export async function ensureProtocolState(
     mintOpen: true,
     marketOpen: false,
     genesisMs: Date.now(),
-    feeLamportsCollected: 0,
+    treasuryLamports: 0,
+    liquidityLamports: 0,
   });
   return (await ctx.db.get(id))!;
 }
@@ -72,7 +75,8 @@ export type ProtocolStateLike = {
   mintOpen: boolean;
   marketOpen: boolean;
   genesisMs: number;
-  feeLamportsCollected: number;
+  treasuryLamports: number;
+  liquidityLamports: number;
 };
 
 export async function protocolStateOrDefault(
@@ -88,6 +92,85 @@ export async function protocolStateOrDefault(
     mintOpen: true,
     marketOpen: false,
     genesisMs: Date.now(),
-    feeLamportsCollected: 0,
+    treasuryLamports: 0,
+    liquidityLamports: 0,
   };
+}
+
+/** Read-only vault pool accounting; defaults before the first deposit. */
+export type VaultPoolLike = {
+  depositedTokens: number;
+  totalShares: number;
+  feePoolLamports: number;
+  feesDistributedLamports: number;
+  feePerShare: number; // cumulative lamports per share (fixed-point 1e12)
+};
+
+export const VAULT_POOL_ZERO: VaultPoolLike = {
+  depositedTokens: 0,
+  totalShares: 0,
+  feePoolLamports: 0,
+  feesDistributedLamports: 0,
+  feePerShare: 0,
+};
+
+export async function readVaultPool(
+  ctx: QueryCtx,
+): Promise<VaultPoolLike & { _id?: Id<"vaultPool"> }> {
+  const pool = await ctx.db
+    .query("vaultPool")
+    .withIndex("by_key", (q) => q.eq("key", "global"))
+    .unique();
+  if (pool) return pool;
+  return { ...VAULT_POOL_ZERO };
+}
+
+export async function ensureVaultPool(
+  ctx: MutationCtx,
+): Promise<Doc<"vaultPool">> {
+  const existing = await ctx.db
+    .query("vaultPool")
+    .withIndex("by_key", (q) => q.eq("key", "global"))
+    .unique();
+  if (existing) return existing;
+  const id = await ctx.db.insert("vaultPool", {
+    key: "global",
+    depositedTokens: 0,
+    totalShares: 0,
+    feePoolLamports: 0,
+    feesDistributedLamports: 0,
+    feePerShare: 0,
+    updatedAt: Date.now(),
+  });
+  return (await ctx.db.get(id))!;
+}
+
+/** Credit the fee pool and the treasury: half of every fee each way. */
+export async function routeFee(
+  ctx: MutationCtx,
+  state: Doc<"protocolState">,
+  pool: Doc<"vaultPool">,
+  feeLamports: number,
+) {
+  const vaultCut = Math.ceil(feeLamports / 2);
+  const treasuryCut = feeLamports - vaultCut;
+  const shares = pool.totalShares;
+  if (shares > 0) {
+    // feePerShare is fixed-point 1e12 so tiny pools still accrue.
+    await ctx.db.patch(pool._id, {
+      feePoolLamports: pool.feePoolLamports + vaultCut,
+      feePerShare: pool.feePerShare + Math.floor((vaultCut * 1e12) / shares),
+      updatedAt: Date.now(),
+    });
+  } else {
+    // No depositors yet — the whole fee sits in the pool until someone
+    // deposits, which is exactly how an empty LP pool behaves.
+    await ctx.db.patch(pool._id, {
+      feePoolLamports: pool.feePoolLamports + vaultCut,
+      updatedAt: Date.now(),
+    });
+  }
+  await ctx.db.patch(state._id, {
+    treasuryLamports: state.treasuryLamports + treasuryCut,
+  });
 }

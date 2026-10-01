@@ -19,11 +19,10 @@ export const TOTAL_LOTS = TOTAL_SUPPLY / LOT_SIZE; // 21,000
 export const MAX_MINT_PER_TX = 5_000_000; // 500 lots
 
 /**
- * Pricing, matched to the reference site's structure: the approved rate is a
- * third of the open rate.
+ * Pricing: approved 0.015 SOL per lot, open 0.035 SOL per lot.
  */
-export const APPROVED_RATE_LAMPORTS = 1_000_000; // 0.001 SOL per lot
-export const OPEN_RATE_LAMPORTS = 3_000_000; // 0.003 SOL per lot
+export const APPROVED_RATE_LAMPORTS = 15_000_000; // 0.015 SOL per lot
+export const OPEN_RATE_LAMPORTS = 35_000_000; // 0.035 SOL per lot
 
 export const APPROVED_MAX_LOTS = 100; // 1,000,000 SOLZK · 0.1 SOL
 export const OPEN_MAX_LOTS = 500; // 5,000,000 SOLZK · 1.5 SOL
@@ -42,6 +41,13 @@ export const MINT_FEE_BPS = 500; // 5% of mint price
 export const MARKET_FEE_BPS = 200; // 2% per trade
 export const FEE_TO_VAULT_BPS = 5_000; // half of every fee → vault depositors
 export const RELAYER_FEE_LAMPORTS = 5_000; // flat network-fee reimbursement
+
+/** Slots an invoice payment must confirm for before settlement (≈13s total). */
+export const CONFIRMATIONS_REQUIRED = 3;
+/** Seconds between simulated slot advances used by the client ticker. */
+export const SLOT_SECONDS = 4;
+/** Invoice lifetime in seconds. */
+export const INVOICE_TTL_SECONDS = 60 * 60;
 
 /** Length of a shielded address / one-time deposit address. */
 export const ADDRESS_LEN = 44;

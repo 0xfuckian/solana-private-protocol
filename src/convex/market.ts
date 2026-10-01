@@ -3,16 +3,16 @@ import { mutation, query } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import {
   ensureProtocolState,
+  ensureVaultPool,
   protocolStateOrDefault,
   getWalletForUser,
   getWalletForUserOrThrow,
   requireUserId,
+  routeFee,
 } from "./backendHelpers";
 import { sha256Hex } from "./sha256";
-import { ENVELOPE_TRANSFER_BYTES, MARKET_FEE_BPS, hexHashOf } from "../lib/protocol";
+import { ENVELOPE_TRANSFER_BYTES, MARKET_FEE_BPS, RELAYER_FEE_LAMPORTS, hexHashOf } from "../lib/protocol";
 import { CIPHERTEXT_B64_LEN, buildEnvelope, parseSealed } from "./protocol";
-
-const PROTOCOL_FEE_LAMPORTS = 5_000;
 
 function nowSlot(genesisMs: number): number {
   return Math.floor((Date.now() - genesisMs) / 400);
@@ -128,7 +128,7 @@ export const placeOrder = mutation({
       throw new Error("Side must be buy or sell.");
     }
     if (priceLamportsPerKilo <= 0) throw new Error("Price must be positive.");
-    if (amountTokens < 1_000) throw new Error("Minimum order is 1,000 S404.");
+    if (amountTokens < 1_000) throw new Error("Minimum order is 1,000 SOLZK.");
 
     const id = await ctx.db.insert("orders", {
       makerWalletId: wallet._id,
@@ -269,7 +269,7 @@ export const settleTrade = mutation({
 
     const expected = sha256Hex(
       sha256Hex(`${tradeId}:${commitment}:${JSON.stringify(sealedNote)}`) +
-        "s404-circuit-v1",
+        "solzk-circuit-v1",
     );
     if (expected !== proof) {
       throw new Error("Proof rejected: it does not commit to these bytes.");
@@ -279,13 +279,18 @@ export const settleTrade = mutation({
       throw new Error("Envelope is not a well-formed sealed note.");
     }
 
+    // 2% market fee, routed like every other fee: half to the vault fee
+    // pool (depositors), half to the treasury.
+    const pool = await ensureVaultPool(ctx);
+    await routeFee(ctx, state, pool, trade.feeLamports);
+
     const slot = nowSlot(state.genesisMs);
     const envelopeId = await ctx.db.insert("envelopes", {
       kind: "transfer",
       signature: hexHashOf(`trade:${tradeId}:${Date.now()}`),
       slot,
       payloadSize: ENVELOPE_TRANSFER_BYTES,
-      feeLamports: PROTOCOL_FEE_LAMPORTS,
+      feeLamports: trade.feeLamports,
       payload: buildEnvelope("transfer", sealedNote),
       proof,
       tradeId,
@@ -301,15 +306,11 @@ export const settleTrade = mutation({
         fundingLamports: seller.fundingLamports + (trade.lamports - trade.feeLamports),
       });
     }
-    await ctx.db.patch(state._id, {
-      feeLamportsCollected: state.feeLamportsCollected + trade.feeLamports,
-    });
     await ctx.db.patch(tradeId, {
       status: "settled",
       shieldedEnvelopeId: envelopeId,
     });
 
-    // If the mint is done, the market is officially live after the first settle.
     return { ok: true, envelopeId };
   },
 });

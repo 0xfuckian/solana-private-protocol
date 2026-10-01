@@ -8,8 +8,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
-import { useS404 } from "@/lib/s404-context";
-import { TICKER, shortAddress } from "@/lib/protocol";
+import { useSolzk } from "@/lib/solzk-context";
+import { SITE_NAME, TICKER, shortAddress } from "@/lib/protocol";
 import {
   ChevronDown,
   Compass,
@@ -39,7 +39,7 @@ function Logo() {
         <Lock className="size-4 text-[#04101a]" strokeWidth={2.5} />
       </span>
       <span className="text-[17px] font-semibold tracking-tight text-foreground">
-        S404
+        {SITE_NAME}
       </span>
     </Link>
   );
@@ -47,12 +47,12 @@ function Logo() {
 
 export function SiteHeader() {
   const { user, signOut } = useAuth();
-  const s404 = useS404();
+  const slk = useSolzk();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const handleSignOut = async () => {
-    s404.lock();
+    slk.lock();
     await signOut();
     navigate("/");
   };
@@ -82,7 +82,7 @@ export function SiteHeader() {
         </div>
 
         <div className="flex items-center gap-2">
-          {s404.phase === "unlocked" && s404.address ? (
+          {slk.phase === "unlocked" && slk.address ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -90,17 +90,17 @@ export function SiteHeader() {
                   className="gap-2 border-primary/40 font-mono-tabular text-xs"
                 >
                   <span className="size-2 rounded-full bg-primary sol-pulse" />
-                  {shortAddress(s404.address)}
+                  {shortAddress(slk.address)}
                   <ChevronDown className="size-3.5 text-muted-foreground" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-64">
                 <DropdownMenuLabel className="font-mono-tabular text-xs text-muted-foreground">
-                  {s404.address}
+                  {slk.address}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  onClick={() => s404.lock()}
+                  onClick={() => slk.lock()}
                   className="cursor-pointer"
                 >
                   <Lock className="mr-2 size-4" /> Lock wallet
@@ -197,7 +197,7 @@ export function SiteFooter() {
             <Lock className="size-3.5 text-[#04101a]" strokeWidth={2.5} />
           </span>
           <div>
-            <p className="text-sm font-semibold">{TICKER}</p>
+            <p className="text-sm font-semibold">{SITE_NAME}</p>
             <p className="text-xs text-muted-foreground">
               A private ledger that settles on Solana
             </p>
@@ -220,9 +220,9 @@ export function SiteFooter() {
         </div>
       </div>
       <p className="mx-auto mt-6 w-full max-w-6xl px-4 text-xs leading-5 text-muted-foreground/70 sm:px-6">
-        S404 is a demonstration protocol. Nothing on this site is financial
-        advice or an offer of securities. The devnet simulates Solana
-        finality locally; the real protocol settles on Solana with
+        {SITE_NAME} is a demonstration protocol. Nothing on this site is
+        financial advice or an offer of securities. The devnet simulates
+        Solana finality locally; the real protocol settles on Solana with
         zero-knowledge proofs.
       </p>
     </footer>

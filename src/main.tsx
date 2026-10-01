@@ -3,7 +3,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
-import { S404Provider } from "@/lib/s404-context";
+import { SolzkProvider } from "@/lib/solzk-context";
 import React, { StrictMode, useEffect, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
@@ -120,7 +120,7 @@ createRoot(document.getElementById("root")!).render(
         <VlyToolbar />
       </ToolbarErrorBoundary>
       <ConvexAuthProvider client={convex}>
-        <S404Provider>
+        <SolzkProvider>
           <BrowserRouter>
             <RouteSyncer />
             <Suspense fallback={<RouteLoading />}>
@@ -168,7 +168,7 @@ createRoot(document.getElementById("root")!).render(
               </Routes>
             </Suspense>
           </BrowserRouter>
-        </S404Provider>
+        </SolzkProvider>
         <Toaster />
       </ConvexAuthProvider>
     </RootErrorBoundary>

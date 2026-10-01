@@ -33,10 +33,10 @@ import {
 // Public chain simulation helpers
 // ---------------------------------------------------------------------------
 
-const CHAIN_START_KEY = "s404.chainStart.v1";
-const SLOT_START_MS = Date.parse("2026-09-30T00:00:00Z");
+const CHAIN_START_KEY = "solzk.chainStart.v1";
+const SLOT_START_MS = Date.parse("2026-10-01T00:00:00Z");
 const SLOT_MS = 400;
-const FAUCET_SIG_KEY = "s404.faucetSig.v1";
+const FAUCET_SIG_KEY = "solzk.faucetSig.v1";
 
 export function getChainStart(): number {
   if (typeof window === "undefined") return SLOT_START_MS;
@@ -97,7 +97,7 @@ export interface MyNote {
   memo: string;
 }
 
-export function useS404() {
+export function useSolzk() {
   const [phase, setPhase] = useState<WalletPhase>("loading");
   const [seedHex, setSeedHex] = useState<string | null>(null);
   const [address, setAddress] = useState<string | null>(null);
@@ -112,10 +112,14 @@ export function useS404() {
   const authUser = useQuery(api.users.currentUser);
   const serverWallet = useQuery(api.protocol.getMyWallet, authUser ? {} : "skip");
   const protocol = useQuery(api.protocol.getState);
+  const vaultPool = useQuery(api.vault.getPool);
 
   const registerWalletMut = useMutation(api.protocol.registerWallet);
   const faucetMut = useMutation(api.protocol.faucet);
   const sendPrivateMut = useMutation(api.protocol.sendPrivate);
+  const depositMut = useMutation(api.vault.deposit);
+  const claimFeesMut = useMutation(api.vault.claimFees);
+  const withdrawMut = useMutation(api.vault.withdraw);
 
   // Restore session from localStorage on mount.
   useEffect(() => {
@@ -214,9 +218,9 @@ export function useS404() {
     setPhase("none");
   }, []);
 
-  // The shielded pool, as the node serves it to us: every unspent sealed
-  // note. We trial-decrypt each with our key; the node cannot tell which
-  // ones open.
+  // The shielded pool, as the node serves it to us: every sealed note and
+  // every published nullifier. We trial-decrypt with our key and retire
+  // notes whose nullifier has appeared. The node cannot tell which opened.
   const spendableNotes = useQuery(
     api.notes.listSpendableNotes,
     phase === "unlocked" ? {} : "skip",
@@ -232,8 +236,6 @@ export function useS404() {
       for (const n of spendableNotes.notes) {
         const opened = await tryUnsealNote(address, n.sealed);
         if (opened) {
-          // A published nullifier retires a note; only our key can compute
-          // which one, so the filtering happens here, never on the server.
           const nullifier = await nullifierFor(
             n.commitment,
             spendKeyRef.current,
@@ -312,15 +314,16 @@ export function useS404() {
       }
 
       const r = crypto.randomUUID();
+      // The 2% transfer fee comes out of the spent value — the receiver
+      // gets the net amount, the pool's accounting stays exact.
+      const fee = Math.ceil((amount * 200) / 10_000);
+      const net = amount - fee;
       const receiverNote = await sealNoteFor(receiver, {
-        value: amount,
+        value: net,
         memo,
         r,
       });
-      // The commitment only needs sender-known info: value, randomness and
-      // the (public) receiver address. Ownership binds later, when the
-      // receiver derives a nullifier with their own spend key.
-      const receiverCommitment = await commitmentFor(amount, r, receiver);
+      const receiverCommitment = await commitmentFor(net, r, receiver);
       const change = acc - amount;
       const changeNote =
         change > 0
@@ -331,7 +334,7 @@ export function useS404() {
         : "";
 
       // The proof commits to every byte of the statement.
-      const statement = `${nullifiers.join(",")}|${receiver}|${amount}|${JSON.stringify(receiverNote)}`;
+      const statement = `${nullifiers.join(",")}|${receiver}|${amount}|${receiverCommitment}|${JSON.stringify(receiverNote)}`;
       const { proof } = await buildProof(statement);
 
       return sendPrivateMut({
@@ -349,7 +352,82 @@ export function useS404() {
     [address, balance, notes, sendPrivateMut],
   );
 
-  const progressToNextMilestone = useMemo(() => {
+  /** Select notes and produce nullifiers for a shielded spend of `amount`. */
+  const buildSpend = useCallback(
+    async (amount: number) => {
+      if (!spendKeyRef.current) throw new Error("Wallet locked");
+      const sorted = [...notes].sort((a, b) => b.value - a.value);
+      const selected: MyNote[] = [];
+      let acc = 0;
+      for (const n of sorted) {
+        if (acc >= amount) break;
+        selected.push(n);
+        acc += n.value;
+      }
+      if (acc < amount)
+        throw new Error("No combination of notes covers that amount");
+      const nullifiers: string[] = [];
+      for (const n of selected) {
+        nullifiers.push(await nullifierFor(n.commitment, spendKeyRef.current));
+      }
+      return { nullifiers, selected, acc };
+    },
+    [notes],
+  );
+
+  /** Deposit SOLZK into the vault — like adding liquidity to a pool. */
+  const depositToVault = useCallback(
+    async (amount: number) => {
+      if (balance < amount) throw new Error("Insufficient shielded balance");
+      const { nullifiers } = await buildSpend(amount);
+      const statement = `deposit:${address}:${amount}:${nullifiers.join(",")}`;
+      const { proof } = await buildProof(statement);
+      await depositMut({ amountTokens: amount, nullifiers, proof });
+      refreshNotes();
+    },
+    [address, balance, buildSpend, depositMut, refreshNotes],
+  );
+
+  /** Claim the depositor payout — the vault's share of protocol fees. */
+  const claimVaultFees = useCallback(async () => {
+    const res = await claimFeesMut({});
+    refreshNotes();
+    return res as { claimedLamports: number };
+  }, [claimFeesMut, refreshNotes]);
+
+  /** Withdraw from the vault: burn shares, receive a fresh sealed note. */
+  const withdrawFromVault = useCallback(
+    async (shares: number) => {
+      if (!address) throw new Error("Wallet locked");
+      const r = crypto.randomUUID();
+      // The pool pro-ratas the token amount; we seal a note of the estimate
+      // and the node verifies the claim on its own accounting.
+      const pool = vaultPool;
+      if (!pool) throw new Error("Pool not loaded");
+      const tokensOut = Math.floor(
+        (shares * pool.depositedTokens) / Math.max(1, pool.totalShares),
+      );
+      const sealed = await sealNoteFor(address, {
+        value: tokensOut,
+        memo: "vault withdraw",
+        r,
+      });
+      const commitment = await commitmentFor(tokensOut, r, address);
+      const statement = `withdraw:${address}:${shares}:${commitment}`;
+      const { proof } = await buildProof(statement);
+      const res = await withdrawMut({
+        shares,
+        sealedNote: sealed,
+        commitment,
+        proof,
+      });
+      refreshNotes();
+      return res as { tokensOut: number };
+    },
+    [address, vaultPool, withdrawMut, refreshNotes],
+  );
+
+  const progressToSellout = useMemo(() => {
     if (!protocol) return 0;
     return Math.min(1, protocol.mintedTokens / TOTAL_SUPPLY);
   }, [protocol]);
@@ -360,6 +438,7 @@ export function useS404() {
     authUser,
     serverWallet,
     protocol,
+    vaultPool,
     error,
     setError,
     // keys
@@ -376,6 +455,10 @@ export function useS404() {
     registerOnChain,
     topUpFaucet,
     sendPrivate,
+    depositToVault,
+    claimVaultFees,
+    withdrawFromVault,
+    buildSpend,
     // shielded state
     balance,
     notes,
@@ -383,6 +466,6 @@ export function useS404() {
     refreshNotes,
     confirmationsRequired: CONFIRMATIONS_REQUIRED,
     slotSeconds: SLOT_SECONDS,
-    progressToNextMilestone,
+    progressToSellout,
   };
 }

@@ -13,7 +13,7 @@ import {
   lamportsToSol,
   shortHash,
 } from "@/lib/protocol";
-import { currentSlot, slotToTimestamp } from "@/lib/useS404";
+import { currentSlot, slotToTimestamp } from "@/lib/useSolzk";
 import {
   ArrowRight,
   Boxes,

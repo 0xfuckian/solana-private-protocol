@@ -16,7 +16,7 @@ import {
   formatTokenAmount,
   lamportsToSol,
 } from "@/lib/protocol";
-import { currentSlot } from "@/lib/useS404";
+import { currentSlot } from "@/lib/useSolzk";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
@@ -79,7 +79,9 @@ function Hero() {
             Every ordinary Solana transaction is a public record of who paid
             whom and how much. {TICKER} keeps the settlement and drops the
             disclosure: value moves as encrypted notes inside ordinary
-            transactions, proven correct by zero-knowledge proofs.
+            transactions, proven correct by zero-knowledge proofs. Mint it,
+            send it, deposit it, trade it — there is no exit to ordinary
+            SOL, and that is the point.
           </p>
 
           <div className="flex flex-wrap items-center gap-3 pt-2">
@@ -290,6 +292,62 @@ function Rates() {
   );
 }
 
+function FeeModel() {
+  return (
+    <section className="border-y border-border/70 bg-card/40">
+      <div className="mx-auto w-full max-w-6xl px-4 py-24 sm:px-6">
+        <motion.div {...fadeUp}>
+          <SectionHeading
+            kicker="03 — Fees & the vault"
+            title="Fees flow to the people who provide liquidity"
+            description="Half of every fee goes to the vault's depositors — exactly like transaction fees pay liquidity providers. The other half funds the protocol."
+          />
+        </motion.div>
+        <div className="mt-12 grid gap-4 md:grid-cols-3">
+          {[
+            {
+              pct: "5%",
+              title: "Mint fee",
+              body: `Of the mint price. 2.5% to vault depositors, 2.5% to the treasury. The other 95% of every mint becomes protocol liquidity inside the vault.`,
+            },
+            {
+              pct: "2%",
+              title: "Transfer fee",
+              body: "On every shielded transfer, split the same way: half to depositors, half to the treasury.",
+            },
+            {
+              pct: "2%",
+              title: "Market fee",
+              body: "On every trade in the order book, split the same way. Depositors claim their share pro rata at any time.",
+            },
+          ].map((f, i) => (
+            <motion.div
+              key={f.title}
+              {...fadeUp}
+              transition={{ ...fadeUp.transition, delay: i * 0.06 }}
+              className="rounded-2xl border border-border/70 bg-card p-6"
+            >
+              <p className="text-sol-gradient font-mono-tabular text-4xl font-semibold">
+                {f.pct}
+              </p>
+              <h3 className="mt-3 text-base font-semibold">{f.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {f.body}
+              </p>
+            </motion.div>
+          ))}
+        </div>
+        <motion.p {...fadeUp} className="mt-8 text-xs leading-6 text-muted-foreground">
+          The vault works like a liquidity pool: deposit {TICKER}, receive
+          shares, earn fees pro rata, withdraw back to sealed notes. What it
+          never does is hand you ordinary SOL — value that enters the
+          shielded pool stays in it.
+        </motion.p>
+      </div>
+    </section>
+  );
+}
+
 const STAGES = [
   {
     n: "1",
@@ -328,7 +386,7 @@ function MintFlow() {
     <section className="mx-auto w-full max-w-6xl px-4 py-24 sm:px-6">
       <motion.div {...fadeUp}>
         <SectionHeading
-          kicker="03 — The mint, end to end"
+          kicker="04 — The mint, end to end"
           title="Five stages. You do three."
           description="Everything after the third confirmation happens on its own."
         />
@@ -372,7 +430,7 @@ function LedgerSection() {
       <div className="mx-auto grid w-full max-w-6xl gap-12 px-4 py-24 sm:px-6 lg:grid-cols-2">
         <motion.div {...fadeUp}>
           <SectionHeading
-            kicker="04 — What is public"
+            kicker="05 — What is public"
             title="Exactly what the chain reveals"
             description="A mint is the one moment value enters the pool, so the amount and ticker are public — supply has to be auditable. After that, nothing about your holdings or transfers is."
           />
@@ -472,7 +530,7 @@ function Roadmap() {
     <section className="mx-auto w-full max-w-6xl px-4 py-24 sm:px-6">
       <motion.div {...fadeUp}>
         <SectionHeading
-          kicker="05 — After the mint"
+          kicker="06 — After the mint"
           title="What comes next"
           description="Two things are built and running; the rest is stated as direction, not promise. Price what is running now."
         />
@@ -536,7 +594,7 @@ function Faq() {
       <div className="mx-auto w-full max-w-6xl px-4 py-24 sm:px-6">
         <motion.div {...fadeUp}>
           <SectionHeading
-            kicker="06 — Troubleshooting"
+            kicker="07 — Troubleshooting"
             title="Common questions"
           />
         </motion.div>
@@ -600,6 +658,7 @@ export default function Landing() {
       <LiveStats />
       <Premise />
       <Rates />
+      <FeeModel />
       <MintFlow />
       <LedgerSection />
       <Roadmap />

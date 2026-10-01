@@ -352,7 +352,7 @@ export async function tryUnsealNote(
 /**
  * Build the hex payload of an envelope, zero-padded to the uniform size
  * (934 bytes for a mint, 921 for a transfer). Mirrors the node's parser:
- * `S404|<kind>|<b64len>|<b64(json)>` + zero padding.
+ * `SOLZK|<kind>|<b64len>|<b64(json)>` + zero padding.
  */
 export function buildEnvelopePayload(
   kind: "mint" | "transfer",
@@ -363,7 +363,7 @@ export function buildEnvelopePayload(
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
-  const prefix = `SOLZK|${kind}|${b64.length}|`;}
+  const prefix = `SOLZK|${kind}|${b64.length}|`;
   let payload = prefix + b64;
   const total = totalBytes * 2;
   if (payload.length > total) {

@@ -16,7 +16,7 @@ import {
   lamportsToSol,
   shortAddress,
 } from "@/lib/protocol";
-import { useS404 } from "@/lib/s404-context";
+import { useSolzk } from "@/lib/solzk-context";
 import {
   ArrowRight,
   Copy,
@@ -32,11 +32,11 @@ import { Link } from "react-router";
 import { useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 
-function UnlockGate({ s404 }: { s404: ReturnType<typeof useS404> }) {
+function UnlockGate({ slk }: { slk: ReturnType<typeof useSolzk> }) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
 
-  if (s404.phase === "none") {
+  if (slk.phase === "none") {
     return (
       <Card className="mx-auto max-w-md">
         <CardContent className="p-8 text-center">
@@ -80,8 +80,8 @@ function UnlockGate({ s404 }: { s404: ReturnType<typeof useS404> }) {
           onKeyDown={async (e) => {
             if (e.key === "Enter" && password && !busy) {
               setBusy(true);
-              const ok = await s404.unlock(password);
-              if (!ok) toast.error(s404.error ?? "Wrong password.");
+              const ok = await slk.unlock(password);
+              if (!ok) toast.error(slk.error ?? "Wrong password.");
               setBusy(false);
             }
           }}
@@ -93,8 +93,8 @@ function UnlockGate({ s404 }: { s404: ReturnType<typeof useS404> }) {
           disabled={busy || !password}
           onClick={async () => {
             setBusy(true);
-            const ok = await s404.unlock(password);
-            if (!ok) toast.error(s404.error ?? "Wrong password.");
+            const ok = await slk.unlock(password);
+            if (!ok) toast.error(slk.error ?? "Wrong password.");
             setBusy(false);
           }}
         >
@@ -106,7 +106,7 @@ function UnlockGate({ s404 }: { s404: ReturnType<typeof useS404> }) {
   );
 }
 
-function SendCard({ s404 }: { s404: ReturnType<typeof useS404> }) {
+function SendCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
   const [receiver, setReceiver] = useState("");
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
@@ -146,15 +146,15 @@ function SendCard({ s404 }: { s404: ReturnType<typeof useS404> }) {
             className="w-full bg-sol-gradient font-semibold text-[#04101a] hover:opacity-90"
             disabled={
               busy ||
-              !s404.address ||
+              !slk.address ||
               !receiver ||
               Number(amount) <= 0 ||
-              Number(amount) > s404.balance
+              Number(amount) > slk.balance
             }
             onClick={async () => {
               setBusy(true);
               try {
-                const res = await s404.sendPrivate(
+                const res = await slk.sendPrivate(
                   receiver,
                   Number(amount),
                   memo || "transfer",
@@ -180,8 +180,8 @@ function SendCard({ s404 }: { s404: ReturnType<typeof useS404> }) {
             Send {amount && Number(amount) > 0 ? formatTokenAmount(Number(amount)) : ""} {TICKER}
           </Button>
           <p className="text-xs text-muted-foreground">
-            Available: {formatTokenAmount(s404.balance)} {TICKER} across{" "}
-            {s404.notes.length} note{s404.notes.length === 1 ? "" : "s"}.
+            Available: {formatTokenAmount(slk.balance)} {TICKER} across{" "}
+            {slk.notes.length} note{slk.notes.length === 1 ? "" : "s"}.
           </p>
         </div>
       </CardContent>
@@ -190,18 +190,18 @@ function SendCard({ s404 }: { s404: ReturnType<typeof useS404> }) {
 }
 
 function DashboardInner() {
-  const s404 = useS404();
+  const slk = useSolzk();
   const invoices = useQuery(
     api.protocol.listMyInvoices,
-    s404.serverWallet ? {} : "skip",
+    slk.serverWallet ? {} : "skip",
   );
   const topUp = useMutation(api.protocol.faucet);
 
-  if (s404.phase !== "unlocked") {
-    return <UnlockGate s404={s404} />;
+  if (slk.phase !== "unlocked") {
+    return <UnlockGate slk={slk} />;
   }
 
-  const wallet = s404.serverWallet;
+  const wallet = slk.serverWallet;
   if (!wallet) {
     return (
       <Card className="mx-auto max-w-md">
@@ -226,9 +226,9 @@ function DashboardInner() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
           label="Shielded balance"
-          value={`${formatTokenAmount(s404.balance)} ${TICKER}`}
+          value={`${formatTokenAmount(slk.balance)} ${TICKER}`}
           accent
-          sub={s404.scanning ? "Scanning the pool…" : "Computed in your browser"}
+          sub={slk.scanning ? "Scanning the pool…" : "Computed in your browser"}
         />
         <Stat
           label="Devnet SOL"
@@ -305,7 +305,7 @@ function DashboardInner() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => s404.lock()}
+                onClick={() => slk.lock()}
               >
                 Lock
               </Button>
@@ -313,7 +313,7 @@ function DashboardInner() {
           </CardContent>
         </Card>
 
-        <SendCard s404={s404} />
+        <SendCard slk={slk} />
 
         <Card>
           <CardContent className="p-6">
@@ -323,12 +323,12 @@ function DashboardInner() {
               ciphertexts only — you are reading them with your own key.
             </p>
             <div className="mt-4 space-y-2">
-              {s404.notes.length === 0 ? (
+              {slk.notes.length === 0 ? (
                 <p className="rounded-xl border border-border/70 bg-background p-4 text-sm text-muted-foreground">
                   No notes yet. Mint to receive your first sealed note.
                 </p>
               ) : (
-                s404.notes.map((n) => (
+                slk.notes.map((n) => (
                   <div
                     key={n._id}
                     className="flex items-center justify-between rounded-xl border border-border/70 bg-background px-4 py-3"
@@ -416,8 +416,8 @@ function DashboardInner() {
           </Button>
           <p className="mt-4 text-xs text-muted-foreground">
             Supply minted:{" "}
-            {(((s404.protocol?.mintedTokens ?? 0) / TOTAL_SUPPLY) * 100).toFixed(2)}% —{" "}
-            {formatTokenAmount(TOTAL_SUPPLY - (s404.protocol?.mintedTokens ?? 0))}{" "}
+            {(((slk.protocol?.mintedTokens ?? 0) / TOTAL_SUPPLY) * 100).toFixed(2)}% —{" "}
+            {formatTokenAmount(TOTAL_SUPPLY - (slk.protocol?.mintedTokens ?? 0))}{" "}
             {TICKER} remaining.
           </p>
         </CardContent>
