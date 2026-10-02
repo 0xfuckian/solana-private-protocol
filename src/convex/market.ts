@@ -1,3 +1,6 @@
+import { sealedStatement } from "../lib/spend";
+import { consumeSpend, spendArgs } from "./spend";
+import { assertUnits, assertSealedNote } from "../lib/safety";
 import { appendNote } from "./merkle";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
@@ -33,7 +36,7 @@ export const getBook = query({
       .withIndex("by_status", (q) => q.eq("status", "open"))
       .collect();
     const bids = orders
-      .filter((o) => o.side === "buy")
+      .filter((o) => o.side === "buy" && o.amountTokens > o.filledTokens)
       .sort((a, b) => b.priceLamportsPerKilo - a.priceLamportsPerKilo)
       .slice(0, 12)
       .map((o) => ({
@@ -43,7 +46,7 @@ export const getBook = query({
         created: o.createdAt,
       }));
     const asks = orders
-      .filter((o) => o.side === "sell")
+      .filter((o) => o.side === "sell" && o.amountTokens > o.filledTokens)
       .sort((a, b) => a.priceLamportsPerKilo - b.priceLamportsPerKilo)
       .slice(0, 12)
       .map((o) => ({
@@ -56,6 +59,7 @@ export const getBook = query({
     const lastTrade = await ctx.db
       .query("trades")
       .withIndex("by_creation_time")
+      .filter(q => q.eq(q.field("status"), "settled"))
       .order("desc")
       .first();
     const lastPrice =
@@ -146,6 +150,8 @@ export const placeOrder = mutation({
     if (side !== "buy" && side !== "sell") {
       throw new Error("Side must be buy or sell.");
     }
+    assertUnits(priceLamportsPerKilo, "Price");
+    assertUnits(amountTokens);
     if (priceLamportsPerKilo <= 0) throw new Error("Price must be positive.");
     if (amountTokens < 1_000) throw new Error("Minimum order is 1,000 SOLZK.");
 
@@ -194,6 +200,7 @@ export const takeOrder = mutation({
     if (order.makerWalletId === wallet._id) {
       throw new Error("You cannot take your own order.");
     }
+    assertUnits(amountTokens);
     const remaining = order.amountTokens - order.filledTokens;
     const fill = Math.min(remaining, amountTokens);
     if (fill <= 0) throw new Error("Nothing left to fill.");
@@ -242,7 +249,7 @@ export const takeOrder = mutation({
       createdAt: Date.now(),
     });
 
-    await ctx.db.patch(order._id, { filledTokens: order.filledTokens + fill });
+    await ctx.db.patch(order._id, { filledTokens: order.filledTokens + fill, status: order.filledTokens + fill === order.amountTokens ? "filled" : "open" });
 
     // Escrow the SOL leg for sell orders taken (buyer pays into escrow now).
     if (order.side === "sell") {
@@ -262,6 +269,8 @@ export const takeOrder = mutation({
 export const settleTrade = mutation({
   args: {
     tradeId: v.id("trades"),
+    nullifiers: v.array(v.string()),
+    ...spendArgs,
     sealedNote: v.object({
       ephemeral: v.string(),
       nonce: v.string(),
@@ -270,7 +279,7 @@ export const settleTrade = mutation({
     commitment: v.string(),
     proof: v.string(),
   },
-  handler: async (ctx, { tradeId, sealedNote, commitment, proof }) => {
+  handler: async (ctx, { tradeId, nullifiers, inputTotal, change, sealedNote, commitment, proof }) => {
     const userId = await requireUserId(ctx);
     const wallet = await getWalletForUserOrThrow(ctx, userId);
     const state = await ensureProtocolState(ctx);
@@ -286,13 +295,8 @@ export const settleTrade = mutation({
       throw new Error("Sealed note ciphertext must be 512 bytes.");
     }
 
-    const expected = sha256Hex(
-      sha256Hex(`${tradeId}:${commitment}:${JSON.stringify(sealedNote)}`) +
-        "solzk-circuit-v1",
-    );
-    if (expected !== proof) {
-      throw new Error("Proof rejected: it does not commit to these bytes.");
-    }
+    assertSealedNote(sealedNote);
+    await consumeSpend(ctx, { nullifiers, inputTotal, change }, trade.tokens, `trade:${tradeId}:${commitment}:${sealedStatement(sealedNote)}`, proof, nowSlot(state.genesisMs));
     const parsed = parseSealed(buildEnvelope("transfer", sealedNote));
     if (!parsed || parsed.ciphertext !== sealedNote.ciphertext) {
       throw new Error("Envelope is not a well-formed sealed note.");
@@ -322,7 +326,7 @@ export const settleTrade = mutation({
     const seller = await ctx.db.get(trade.sellerWalletId);
     if (seller) {
       await ctx.db.patch(seller._id, {
-        fundingLamports: seller.fundingLamports + (trade.lamports - trade.feeLamports),
+        fundingLamports: seller.fundingLamports + trade.lamports,
       });
     }
     await ctx.db.patch(tradeId, {

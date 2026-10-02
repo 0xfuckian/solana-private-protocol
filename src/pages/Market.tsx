@@ -1,3 +1,4 @@
+import { spendStatement, sealedStatement } from "@/lib/spend";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -621,6 +622,7 @@ function FillRow({
 }
 
 function SettleButton({ trade }: { trade: MyTrade }) {
+  const slk = useSolzk();
   const settle = useMutation(api.market.settleTrade);
   const [busy, setBusy] = useState(false);
 
@@ -640,11 +642,13 @@ function SettleButton({ trade }: { trade: MyTrade }) {
             r,
           });
           const commitment = await commitmentFor(trade.tokens, r, buyer);
-          const { proof } = await buildProof(
-            `${trade._id}:${commitment}:${JSON.stringify(sealed)}`,
-          );
+          const spend = await slk.buildSpend(trade.tokens);
+          const { proof } = await buildProof(spendStatement(`trade:${trade._id}:${commitment}:${sealedStatement(sealed)}`, spend));
           await settle({
             tradeId: trade._id as never,
+            nullifiers: spend.nullifiers,
+            inputTotal: spend.inputTotal,
+            change: spend.change,
             sealedNote: sealed,
             commitment,
             proof,

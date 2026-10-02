@@ -1,5 +1,7 @@
+import { sealedStatement } from "../lib/spend";
+import { consumeSpend, spendArgs } from "./spend";
 import { appendNote } from "./merkle";
-import { assertNullifiers, assertSealedNote } from "../lib/safety";
+import { assertNullifiers, assertSealedNote, assertUnits } from "../lib/safety";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
@@ -94,6 +96,7 @@ export const swapSolForTokens = mutation({
   args: {
     solLamportsIn: v.number(),
     minTokensOut: v.number(),
+    expectedTokensOut: v.number(),
     sealedNote: v.object({
       ephemeral: v.string(),
       nonce: v.string(),
@@ -102,7 +105,7 @@ export const swapSolForTokens = mutation({
     commitment: v.string(),
     proof: v.string(),
   },
-  handler: async (ctx, { solLamportsIn, minTokensOut, sealedNote, commitment, proof }) => {
+  handler: async (ctx, { solLamportsIn, minTokensOut, expectedTokensOut, sealedNote, commitment, proof }) => {
     const userId = await requireUserId(ctx);
     const wallet = await getWalletForUserOrThrow(ctx, userId);
     const state = await ensureProtocolState(ctx);
@@ -125,10 +128,13 @@ export const swapSolForTokens = mutation({
       throw new Error("Sealed note ciphertext must be 512 bytes.");
     }
 
+    assertUnits(minTokensOut, "Minimum output", true);
+    assertUnits(expectedTokensOut, "Expected output");
     const quote = quoteSwapSolForTokens(solLamportsIn, solReserve, tokenReserve);
     if (!quote) {
       throw new Error("Swap pool reserves cannot cover that trade.");
     }
+    if (quote.outAmount !== expectedTokensOut) throw new Error("Pool quote changed. Refresh the quote and seal a new output note.");
     if (quote.outAmount < minTokensOut) {
       throw new Error(
         `Slippage guard: this trade now yields ${quote.outAmount.toLocaleString()} SOLZK, below your ${minTokensOut.toLocaleString()} minimum.`,
@@ -137,7 +143,7 @@ export const swapSolForTokens = mutation({
 
     // The proof commits to the SOL leg and the sealed output note — the
     // shielded leg cannot be altered in transit.
-    const statement = `swap-sol:${wallet.address}:${solLamportsIn}:${commitment}:${JSON.stringify(sealedNote)}`;
+    const statement = `swap-sol:${wallet.address}:${solLamportsIn}:${minTokensOut}:${expectedTokensOut}:${commitment}:${sealedStatement(sealedNote)}`;
     const expected = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
     if (expected !== proof) {
       throw new Error("Proof rejected: it does not commit to these bytes.");
@@ -202,9 +208,10 @@ export const swapTokensForSol = mutation({
     tokensIn: v.number(),
     minLamportsOut: v.number(),
     nullifiers: v.array(v.string()),
+    ...spendArgs,
     proof: v.string(),
   },
-  handler: async (ctx, { tokensIn, minLamportsOut, nullifiers, proof }) => {
+  handler: async (ctx, { tokensIn, minLamportsOut, nullifiers, inputTotal, change, proof }) => {
     const userId = await requireUserId(ctx);
     const wallet = await getWalletForUserOrThrow(ctx, userId);
     const state = await ensureProtocolState(ctx);
@@ -227,6 +234,7 @@ export const swapTokensForSol = mutation({
         throw new Error("Nullifier already seen — double spend blocked.");
     }
 
+    assertUnits(minLamportsOut, "Minimum output", true);
     const quote = quoteSwapTokensForSol(tokensIn, solReserve, tokenReserve);
     if (!quote) {
       throw new Error("Swap pool reserves cannot cover that trade.");
@@ -237,11 +245,7 @@ export const swapTokensForSol = mutation({
       );
     }
 
-    const statement = `swap-tokens:${wallet.address}:${tokensIn}:${nullifiers.join(",")}`;
-    const expected = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
-    if (expected !== proof) {
-      throw new Error("Proof rejected: it does not commit to these bytes.");
-    }
+
 
     const pool = await ensurePoolRef(ctx);
     if (pool) await routeFee(ctx, state, pool, quote.feeLamports);
@@ -257,9 +261,7 @@ export const swapTokensForSol = mutation({
       `swap:${wallet.address}:${Date.now()}:${Math.floor(Math.random() * 0xffffff)}`,
     );
 
-    for (const n of nullifiers) {
-      await ctx.db.insert("nullifiers", { value: n, slot });
-    }
+    await consumeSpend(ctx, { nullifiers, inputTotal, change }, tokensIn, `swap-tokens:${wallet.address}:${tokensIn}:${minLamportsOut}`, proof, slot);
     await ctx.db.insert("swapEvents", {
       direction: "tokens_to_sol",
       solLamportsIn: 0,

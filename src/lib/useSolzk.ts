@@ -1,3 +1,4 @@
+import { spendStatement, sealedStatement, type ChangeOutput } from "./spend";
 import { assertUnits, isSolzkNote, relayerFeeTokens } from "./safety";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
@@ -435,7 +436,7 @@ export function useSolzk() {
         : "";
 
       // The proof commits to every byte of the statement.
-      const statement = `${nullifiers.join(",")}|${receiver}|${amount}|${receiverCommitment}|${JSON.stringify(receiverNote)}`;
+      const statement = `${nullifiers.join(",")}|${receiver}|${amount}|${receiverCommitment}|${sealedStatement(receiverNote)}|${changeCommitment}|${sealedStatement(changeNote ?? { ephemeral: "none", nonce: "none", ciphertext: "none" })}|${opts?.feeInNote === true}`;
       const { proof } = await buildProof(statement);
 
       return sendPrivateMut({
@@ -456,10 +457,10 @@ export function useSolzk() {
 
   /** Select notes and produce nullifiers for a shielded spend of `amount`. */
   const buildSpend = useCallback(
-    async (amount: number) => {
+    async (amount: number, symbol = "SOLZK") => {
       assertUnits(amount);
-      if (!spendKeyRef.current) throw new Error("Wallet locked");
-      const sorted = notes.filter(isSolzkNote).sort((a, b) => b.value - a.value);
+      if (!address || !spendKeyRef.current) throw new Error("Wallet locked");
+      const sorted = notes.filter(n => symbol === "SOLZK" ? isSolzkNote(n) : n.memo === `asset:${symbol}`).sort((a, b) => b.value - a.value);
       const selected: MyNote[] = [];
       let acc = 0;
       for (const n of sorted) {
@@ -473,20 +474,25 @@ export function useSolzk() {
       for (const n of selected) {
         nullifiers.push(await nullifierFor(n.commitment, spendKeyRef.current));
       }
-      return { nullifiers, selected, acc };
+      let change: ChangeOutput | undefined;
+      if (acc > amount) {
+        const value = acc - amount;
+        const r = crypto.randomUUID();
+        change = { value, commitment: await commitmentFor(value, r, address), sealed: await sealNoteFor(address, { value, memo: symbol === "SOLZK" ? "change" : `asset:${symbol}`, r }) };
+      }
+      return { nullifiers, selected, acc, inputTotal: acc, change };
     },
-    [notes],
+    [notes, address],
   );
 
   /** Burn SOLZK from your notes to unlock a permanent fee-discount tier. */
   const burnForTier = useCallback(
     async (amountTokens: number) => {
       if (!address || !spendKeyRef.current) throw new Error("Wallet locked");
-      const { nullifiers, acc } = await buildSpend(amountTokens);
-      if (acc !== amountTokens) throw new Error("This demo operation requires exact-value notes; change outputs are not yet supported. No notes were spent.");
-      const statement = `burn:${address}:${amountTokens}:${nullifiers.join(",")}`;
+      const spend = await buildSpend(amountTokens);
+      const statement = spendStatement(`burn:${address}:${amountTokens}`, spend);
       const { proof } = await buildProof(statement);
-      const res = await burnForTierMut({ amountTokens, nullifiers, proof });
+      const res = await burnForTierMut({ amountTokens, nullifiers: spend.nullifiers, inputTotal: spend.inputTotal, change: spend.change, proof });
       refreshNotes();
       return res as {
         burnedTokens: number;
@@ -505,11 +511,10 @@ export function useSolzk() {
   const redeemTokens = useCallback(
     async (amountTokens: number) => {
       if (!address || !spendKeyRef.current) throw new Error("Wallet locked");
-      const { nullifiers, acc } = await buildSpend(amountTokens);
-      if (acc !== amountTokens) throw new Error("This demo operation requires exact-value notes; change outputs are not yet supported. No notes were spent.");
-      const statement = `redeem:${address}:${amountTokens}:${nullifiers.join(",")}`;
+      const spend = await buildSpend(amountTokens);
+      const statement = spendStatement(`redeem:${address}:${amountTokens}`, spend);
       const { proof } = await buildProof(statement);
-      const res = await redeemMut({ amountTokens, nullifiers, proof });
+      const res = await redeemMut({ amountTokens, nullifiers: spend.nullifiers, inputTotal: spend.inputTotal, change: spend.change, proof });
       refreshNotes();
       return res as {
         netLamports: number;
@@ -548,25 +553,27 @@ export function useSolzk() {
       }
 
       const { nullifiers, acc } = await buildSpend(amount);
+      const receiverR = crypto.randomUUID();
       const { sealed: receiverNote, stealthAddress } = await sealNoteForStealth(
         stealthMeta,
-        { value: net, memo, r: crypto.randomUUID() },
+        { value: net, memo, r: receiverR },
       );
       const receiverCommitment = await commitmentFor(
         net,
-        "",
+        receiverR,
         stealthAddress,
       );
       const change = acc - amount;
+      const changeR = crypto.randomUUID();
       const changeNote =
         change > 0
-          ? await sealNoteFor(address, { value: change, memo: "change", r: "change" })
+          ? await sealNoteFor(address, { value: change, memo: "change", r: changeR })
           : null;
       const changeCommitment = changeNote
-        ? await commitmentFor(change, "change", address)
+        ? await commitmentFor(change, changeR, address)
         : "";
 
-      const statement = `${nullifiers.join(",")}|${stealthAddress}|${amount}|${receiverCommitment}|${JSON.stringify(receiverNote)}`;
+      const statement = `${nullifiers.join(",")}|${stealthAddress}|${amount}|${receiverCommitment}|${sealedStatement(receiverNote)}|${changeCommitment}|${sealedStatement(changeNote ?? { ephemeral: "none", nonce: "none", ciphertext: "none" })}|${opts?.feeInNote === true}`;
       const { proof } = await buildProof(statement);
 
       return sendPrivateMut({
@@ -619,11 +626,10 @@ export function useSolzk() {
     async (amount: number) => {
       assertUnits(amount);
       if (balance < amount) throw new Error("Insufficient shielded balance");
-      const { nullifiers, acc } = await buildSpend(amount);
-      if (acc !== amount) throw new Error("Vault deposit requires exact-value notes until change outputs are supported. No notes were spent.");
-      const statement = `deposit:${address}:${amount}:${nullifiers.join(",")}`;
+      const spend = await buildSpend(amount);
+      const statement = spendStatement(`deposit:${address}:${amount}`, spend);
       const { proof } = await buildProof(statement);
-      await depositMut({ amountTokens: amount, nullifiers, proof });
+      await depositMut({ amountTokens: amount, nullifiers: spend.nullifiers, inputTotal: spend.inputTotal, change: spend.change, proof });
       refreshNotes();
     },
     [address, balance, buildSpend, depositMut, refreshNotes],
@@ -737,20 +743,13 @@ export function useSolzk() {
     async (symbol: string, units: number) => {
       if (!address || !spendKeyRef.current) throw new Error("Wallet locked");
       assertUnits(units);
-      // Find the asset note covering the units.
-      const note = notes.find(
-        (n) => n.memo === `asset:${symbol}` && n.value === units,
-      );
-      if (!note) {
-        throw new Error(`Unshield requires an exact-value ${symbol} note until asset change outputs are supported.`);
-      }
-      const nullifier = await nullifierFor(note.commitment, spendKeyRef.current);
-      const statement = `unshield:${address}:${symbol}:${units}:${nullifier}`;
+      const spend = await buildSpend(units, symbol);
+      const statement = spendStatement(`unshield:${address}:${symbol}:${units}`, spend);
       const { proof } = await buildProof(statement);
-      await unshieldAssetMut({ symbol, units, nullifiers: [nullifier], proof });
+      await unshieldAssetMut({ symbol, units, nullifiers: spend.nullifiers, inputTotal: spend.inputTotal, change: spend.change, proof });
       refreshNotes();
     },
-    [address, notes, spendKeyRef, unshieldAssetMut, refreshNotes],
+    [address, buildSpend, unshieldAssetMut, refreshNotes],
   );
 
   /** Devnet mock SPL faucet. */
@@ -812,11 +811,12 @@ export function useSolzk() {
           r,
         });
         const commitment = await commitmentFor(quote.outAmount, r, address);
-        const statement = `swap-sol:${address}:${lamportsIn}:${commitment}:${JSON.stringify(sealed)}`;
+        const statement = `swap-sol:${address}:${lamportsIn}:${minOut}:${quote.outAmount}:${commitment}:${sealedStatement(sealed)}`;
         const { proof } = await buildProof(statement);
         return swapSolForTokensMut({
           solLamportsIn: lamportsIn,
-          minTokensOut: Math.min(minOut, quote.outAmount),
+          minTokensOut: minOut,
+          expectedTokensOut: quote.outAmount,
           sealedNote: sealed,
           commitment,
           proof,
@@ -828,14 +828,15 @@ export function useSolzk() {
         }>;
       }
       const tokensIn = Math.round(amount);
-      const { nullifiers, acc } = await buildSpend(tokensIn);
-      if (acc !== tokensIn) throw new Error("Token swap requires exact-value notes until change outputs are supported. No notes were spent.");
-      const statement = `swap-tokens:${address}:${tokensIn}:${nullifiers.join(",")}`;
+      const spend = await buildSpend(tokensIn);
+      const statement = spendStatement(`swap-tokens:${address}:${tokensIn}:${minOut}`, spend);
       const { proof } = await buildProof(statement);
       return swapTokensForSolMut({
         tokensIn,
         minLamportsOut: minOut,
-        nullifiers,
+        nullifiers: spend.nullifiers,
+        inputTotal: spend.inputTotal,
+        change: spend.change,
         proof,
       }) as Promise<{
         lamportsOut: number;

@@ -1,3 +1,5 @@
+import { sealedStatement } from "../lib/spend";
+import { consumeSpend, spendArgs } from "./spend";
 import { appendNote } from "./merkle";
 import { assertNullifiers, assertUnits, assertSealedNote, relayerFeeTokens as dynamicRelayerFee } from "../lib/safety";
 import { getAuthUserId } from "@convex-dev/auth/server";
@@ -11,6 +13,7 @@ import {
   protocolStateOrDefault,
   requireUserId,
   routeFee,
+  routeTokenFee,
 } from "./backendHelpers";
 import { isWalletWhitelisted } from "./whitelist";
 import { sha256Hex } from "./sha256";
@@ -166,6 +169,8 @@ export const getState = query({
       genesisMs: state.genesisMs,
       currentSlot: nowSlot(state.genesisMs),
       treasuryLamports: state.treasuryLamports,
+      treasuryTokens: state.treasuryTokens ?? 0,
+      vaultFeeTokens: state.vaultFeeTokens ?? 0,
       liquidityLamports: state.liquidityLamports,
       recentEnvelopes: envelopes.map((e) => ({
         _id: e._id,
@@ -569,6 +574,8 @@ export const sendPrivate = mutation({
       throw new Error("Sealed note ciphertext must be 512 bytes.");
     }
     const hasChange = args.changeNote.ephemeral !== "none";
+    if (hasChange) assertSealedNote(args.changeNote);
+    else if (args.changeCommitment || args.changeNote.nonce !== "none" || args.changeNote.ciphertext !== "none") throw new Error("Unexpected change metadata.");
     if (
       hasChange &&
       (args.changeNote.ciphertext.length !== CIPHERTEXT_B64_LEN ||
@@ -579,7 +586,7 @@ export const sendPrivate = mutation({
 
     // Verify the proof commits to the payload parts — including the new
     // commitments, so a published note cannot be swapped after the fact.
-    const statement = `${args.nullifiers.join(",")}|${args.receiver}|${args.amount}|${args.receiverCommitment}|${JSON.stringify(args.sealedNote)}`;
+    const statement = `${args.nullifiers.join(",")}|${args.receiver}|${args.amount}|${args.receiverCommitment}|${sealedStatement(args.sealedNote)}|${args.changeCommitment}|${sealedStatement(args.changeNote)}|${args.feeInNote === true}`;
     const expected = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
     if (expected !== args.proof) {
       throw new Error("Proof rejected: it does not commit to these bytes.");
@@ -617,8 +624,7 @@ export const sendPrivate = mutation({
     }
 
     // 2% (tier-discounted) protocol fee, routed like every other fee.
-    const pool = await ensureVaultPool(ctx);
-    await routeFee(ctx, state, pool, transferFee);
+    await routeTokenFee(ctx, state, transferFee);
 
     const slot = nowSlot(state.genesisMs);
     const signature = hexHashOf(
@@ -630,7 +636,9 @@ export const sendPrivate = mutation({
       signature,
       slot,
       payloadSize: ENVELOPE_TRANSFER_BYTES,
-      feeLamports: transferFee,
+      feeLamports: 0,
+      feeTokens: transferFee,
+      feeDenomination: "SOLZK",
       payload: buildEnvelope("transfer", args.sealedNote),
       proof: args.proof,
       feeInNote,
@@ -793,9 +801,10 @@ export const burnForTier = mutation({
   args: {
     amountTokens: v.number(),
     nullifiers: v.array(v.string()),
+    ...spendArgs,
     proof: v.string(),
   },
-  handler: async (ctx, { amountTokens, nullifiers, proof }) => {
+  handler: async (ctx, { amountTokens, nullifiers, inputTotal, change, proof }) => {
     const userId = await requireUserId(ctx);
     const wallet = await getWalletForUserOrThrow(ctx, userId);
     const state = await ensureProtocolState(ctx);
@@ -815,16 +824,8 @@ export const burnForTier = mutation({
       if (existing)
         throw new Error("Nullifier already seen — double spend blocked.");
     }
-    const statement = `burn:${wallet.address}:${amountTokens}:${nullifiers.join(",")}`;
-    const expected = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
-    if (expected !== proof) {
-      throw new Error("Proof rejected: it does not commit to these bytes.");
-    }
-
     const slot = nowSlot(state.genesisMs);
-    for (const n of nullifiers) {
-      await ctx.db.insert("nullifiers", { value: n, slot });
-    }
+    await consumeSpend(ctx, { nullifiers, inputTotal, change }, amountTokens, `burn:${wallet.address}:${amountTokens}`, proof, slot);
 
     const walletBurned = (wallet.burnedTokens ?? 0) + amountTokens;
     await ctx.db.patch(wallet._id, { burnedTokens: walletBurned });
@@ -864,9 +865,10 @@ export const redeem = mutation({
   args: {
     amountTokens: v.number(),
     nullifiers: v.array(v.string()),
+    ...spendArgs,
     proof: v.string(),
   },
-  handler: async (ctx, { amountTokens, nullifiers, proof }) => {
+  handler: async (ctx, { amountTokens, nullifiers, inputTotal, change, proof }) => {
     const userId = await requireUserId(ctx);
     const wallet = await getWalletForUserOrThrow(ctx, userId);
     const state = await ensureProtocolState(ctx);
@@ -886,11 +888,6 @@ export const redeem = mutation({
       if (existing)
         throw new Error("Nullifier already seen — double spend blocked.");
     }
-    const statement = `redeem:${wallet.address}:${amountTokens}:${nullifiers.join(",")}`;
-    const expected = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
-    if (expected !== proof) {
-      throw new Error("Proof rejected: it does not commit to these bytes.");
-    }
 
     const gross = Math.floor((amountTokens * OPEN_RATE_LAMPORTS) / LOT_SIZE);
     const fee = Math.ceil((gross * MARKET_FEE_BPS) / 10_000);
@@ -905,9 +902,7 @@ export const redeem = mutation({
     }
 
     const slot = nowSlot(state.genesisMs);
-    for (const n of nullifiers) {
-      await ctx.db.insert("nullifiers", { value: n, slot });
-    }
+    await consumeSpend(ctx, { nullifiers, inputTotal, change }, amountTokens, `redeem:${wallet.address}:${amountTokens}`, proof, slot);
 
     // The exit fee routes exactly like every other fee: half vault, half
     // treasury. The rest of the gross leaves the liquidity reserve.
@@ -1237,9 +1232,10 @@ export const unshieldAsset = mutation({
     symbol: v.string(),
     units: v.number(),
     nullifiers: v.array(v.string()),
+    ...spendArgs,
     proof: v.string(),
   },
-  handler: async (ctx, { symbol, units, nullifiers, proof }) => {
+  handler: async (ctx, { symbol, units, nullifiers, inputTotal, change, proof }) => {
     const userId = await requireUserId(ctx);
     const wallet = await getWalletForUserOrThrow(ctx, userId);
     const state = await ensureProtocolState(ctx);
@@ -1257,19 +1253,13 @@ export const unshieldAsset = mutation({
       if (existing)
         throw new Error("Nullifier already seen — double spend blocked.");
     }
-    const statement = `unshield:${wallet.address}:${symbol}:${units}:${nullifiers.join(",")}`;
-    const expected = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
-    if (expected !== proof) {
-      throw new Error("Proof rejected: it does not commit to these bytes.");
-    }
+
 
     const slot = Math.floor((Date.now() - state.genesisMs) / 400);
     const signature = hexHashOf(
       `unshield:${wallet.address}:${Date.now()}:${Math.floor(Math.random() * 0xffffff)}`,
     );
-    for (const n of nullifiers) {
-      await ctx.db.insert("nullifiers", { value: n, slot });
-    }
+    await consumeSpend(ctx, { nullifiers, inputTotal, change }, units, `unshield:${wallet.address}:${symbol}:${units}`, proof, slot);
     const position = await ctx.db
       .query("assetWallets")
       .withIndex("by_wallet", (q) => q.eq("walletId", wallet._id))

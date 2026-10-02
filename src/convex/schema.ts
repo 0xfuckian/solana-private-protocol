@@ -55,6 +55,8 @@ const schema = defineSchema(
       genesisMs: v.number(),
       // The protocol's half of every fee (mint + market).
       treasuryLamports: v.number(),
+      treasuryTokens: v.optional(v.number()),
+      vaultFeeTokens: v.optional(v.number()),
       // 95% of every mint, held inside the vault as protocol liquidity and
       // backstopping withdrawals.
       liquidityLamports: v.number(),
@@ -124,6 +126,8 @@ const schema = defineSchema(
       slot: v.number(),
       payloadSize: v.number(),
       feeLamports: v.number(),
+      feeTokens: v.optional(v.number()),
+      feeDenomination: v.optional(v.string()),
       payload: v.string(),
       proof: v.string(),
       invoiceId: v.optional(v.id("invoices")),

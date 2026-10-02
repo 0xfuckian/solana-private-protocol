@@ -1,5 +1,6 @@
+import { consumeSpend, spendArgs } from "./spend";
 import { appendNote } from "./merkle";
-import { assertNullifiers, assertUnits } from "../lib/safety";
+import { assertNullifiers, assertUnits, mulDivFloor } from "../lib/safety";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
@@ -123,9 +124,10 @@ export const deposit = mutation({
   args: {
     amountTokens: v.number(),
     nullifiers: v.array(v.string()),
+    ...spendArgs,
     proof: v.string(),
   },
-  handler: async (ctx, { amountTokens, nullifiers, proof }) => {
+  handler: async (ctx, { amountTokens, nullifiers, inputTotal, change, proof }) => {
     const userId = await requireUserId(ctx);
     const wallet = await getWalletForUserOrThrow(ctx, userId);
     const state = await ensureProtocolState(ctx);
@@ -143,23 +145,17 @@ export const deposit = mutation({
       if (existing)
         throw new Error("Nullifier already seen — double spend blocked.");
     }
-    // The proof commits to the deposit statement.
-    const statement = `deposit:${wallet.address}:${amountTokens}:${nullifiers.join(",")}`;
-    const expected = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
-    if (expected !== proof) {
-      throw new Error("Proof rejected: it does not commit to these bytes.");
-    }
+
 
     // Shares = pro rata against the existing share supply.
     const firstDeposit = pool.totalShares === 0;
     const mintedShares = firstDeposit
       ? amountTokens // first depositor: 1 share per token
-      : Math.floor((amountTokens * pool.totalShares) / Math.max(1, pool.depositedTokens));
+      : mulDivFloor(amountTokens, pool.totalShares, Math.max(1, pool.depositedTokens));
+    if (mintedShares <= 0) throw new Error("Deposit rounds to zero shares.");
 
     const slot = Math.floor((Date.now() - state.genesisMs) / 400);
-    for (const n of nullifiers) {
-      await ctx.db.insert("nullifiers", { value: n, slot });
-    }
+    await consumeSpend(ctx, { nullifiers, inputTotal, change }, amountTokens, `deposit:${wallet.address}:${amountTokens}`, proof, slot);
 
     const existing = await ctx.db
       .query("vaultDeposits")
@@ -314,6 +310,7 @@ export const withdraw = mutation({
       .query("vaultDeposits")
       .withIndex("by_wallet", (q) => q.eq("walletId", wallet._id))
       .first();
+    assertUnits(shares, "Shares");
     if (!deposit || deposit.shares < shares || shares <= 0) {
       throw new Error("Not enough shares.");
     }
@@ -326,11 +323,15 @@ export const withdraw = mutation({
       throw new Error("Proof rejected: it does not commit to these bytes.");
     }
 
-    const tokensOut = Math.floor(
-      (shares * pool.depositedTokens) / Math.max(1, pool.totalShares),
-    );
+    const tokensOut = mulDivFloor(shares, pool.depositedTokens, Math.max(1, pool.totalShares));
     if (tokensOut <= 0) throw new Error("Withdrawal rounds to zero.");
 
+    // Settle all accrued SOL fees before changing share count; withdrawal
+    // must not erase earned rewards or give remaining shares old rewards twice.
+    const accrued = Math.floor((pool.feePerShare * deposit.shares) / 1e12);
+    const claimedLamports = Math.max(0, accrued - deposit.accumulatedFees);
+    if (claimedLamports > pool.feePoolLamports) throw new Error("Fee pool cannot cover accrued rewards.");
+    if (claimedLamports > 0) await ctx.db.patch(wallet._id, { fundingLamports: wallet.fundingLamports + claimedLamports });
     const remainingShares = deposit.shares - shares;
     if (remainingShares === 0) {
       await ctx.db.delete(deposit._id);
@@ -349,6 +350,8 @@ export const withdraw = mutation({
     await ctx.db.patch(pool._id, {
       depositedTokens: Math.max(0, pool.depositedTokens - tokensOut),
       totalShares: pool.totalShares - shares,
+      feePoolLamports: pool.feePoolLamports - claimedLamports,
+      feesDistributedLamports: pool.feesDistributedLamports + claimedLamports,
       updatedAt: Date.now(),
     });
 
@@ -361,6 +364,6 @@ export const withdraw = mutation({
       createdAt: Date.now(),
     });
 
-    return { tokensOut };
+    return { tokensOut, claimedLamports };
   },
 });

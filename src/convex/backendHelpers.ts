@@ -1,3 +1,4 @@
+import { assertUnits } from "../lib/safety";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { MutationCtx, QueryCtx } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
@@ -80,6 +81,8 @@ export type ProtocolStateLike = {
   marketOpen: boolean;
   genesisMs: number;
   treasuryLamports: number;
+  treasuryTokens?: number;
+  vaultFeeTokens?: number;
   liquidityLamports: number;
   burnedTokens?: number;
   relayerFeesTokens?: number;
@@ -181,12 +184,22 @@ export async function ensureVaultPool(
  * the pool already holds, otherwise nobody would provide liquidity first).
  * This is why feePerShare only advances per existing share.
  */
+/** Token fees are retained in token-denominated reserves, never paid as SOL.
+ * Distribution to stakers/vault holders requires separate reward accounting.
+ */
+export async function routeTokenFee(ctx: MutationCtx, state: Doc<"protocolState">, tokens: number) {
+  assertUnits(tokens, "Token fee", true);
+  const vaultCut = Math.ceil(tokens / 2);
+  await ctx.db.patch(state._id, { treasuryTokens: (state.treasuryTokens ?? 0) + tokens - vaultCut, vaultFeeTokens: (state.vaultFeeTokens ?? 0) + vaultCut });
+}
+
 export async function routeFee(
   ctx: MutationCtx,
   state: Doc<"protocolState">,
   pool: Doc<"vaultPool">,
   feeLamports: number,
 ) {
+  assertUnits(feeLamports, "SOL fee", true);
   const vaultCut = Math.ceil(feeLamports / 2);
   const treasuryCut = feeLamports - vaultCut;
   const shares = pool.totalShares;

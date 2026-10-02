@@ -204,6 +204,7 @@ export default function Explorer() {
         />
       </div>
 
+      <div className="mb-6 rounded-xl border border-border bg-card p-4 text-sm"><p className="font-medium">Separate SOLZK fee reserves</p><p className="mt-2 font-mono text-primary">Treasury {formatTokenAmount(state?.treasuryTokens ?? 0)} · vault rewards {formatTokenAmount(state?.vaultFeeTokens ?? 0)} SOLZK</p><p className="mt-2 text-xs text-muted-foreground">Retained token reserves; not SOL balances or currently claimable rewards. Historical misclassified fees have not been migrated.</p></div>
       {detail?.envelope ? (
         <Card className="border-sol-gradient mb-8">
           <CardContent className="p-6">
@@ -256,8 +257,8 @@ export default function Explorer() {
                 }
               />
               <Stat
-                label="Relayer fee"
-                value={`${lamportsToSol(detail.envelope.feeLamports)} SOL`}
+                label="Protocol fee"
+                value={detail.envelope.feeDenomination === "SOLZK" ? `${formatTokenAmount(detail.envelope.feeTokens ?? 0)} SOLZK` : `${lamportsToSol(detail.envelope.feeLamports)} demo SOL`}
                 sub={
                   detail.envelope.feeInNote
                     ? "relayer paid from the note itself — sender spent no SOL"
@@ -366,7 +367,7 @@ export default function Explorer() {
                       <td className="px-6 py-3">{e.slot.toLocaleString()}</td>
                       <td className="px-6 py-3">{e.payloadSize} B</td>
                       <td className="px-6 py-3">
-                        {e.feeDenomination === "SOLZK" ? `${formatTokenAmount(e.feeLamports)} SOLZK` : `${lamportsToSol(e.feeLamports)} demo SOL`}
+                        {e.feeDenomination === "SOLZK" ? `${formatTokenAmount(e.feeTokens ?? e.feeLamports)} SOLZK` : `${lamportsToSol(e.feeLamports)} demo SOL`}
                         <p className="mt-1 text-[10px] text-muted-foreground">Vault {e.feeSplit.vault} / treasury {e.feeSplit.treasury} {e.feeDenomination}</p>
                         {e.decodedMint && <p className="mt-1 text-[10px] text-muted-foreground">Price {lamportsToSol(e.decodedMint.priceUnits)} demo SOL</p>}
                       </td>

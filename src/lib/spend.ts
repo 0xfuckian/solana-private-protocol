@@ -30,6 +30,10 @@ export function validateSpend(spend: SpendInputs, amount: number): void {
   }
 }
 
+export function sealedStatement(sealed: { ephemeral: string; nonce: string; ciphertext: string }): string {
+  return JSON.stringify({ ephemeral: sealed.ephemeral, nonce: sealed.nonce, ciphertext: sealed.ciphertext });
+}
+
 export function spendStatement(domain: string, spend: SpendInputs): string {
   // Fixed field ordering; never serialize caller-controlled object ordering.
   const change = spend.change;
