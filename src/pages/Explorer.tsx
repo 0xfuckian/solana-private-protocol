@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { GradientBadge, Stat } from "@/components/site/Stat";
 import { PageShell, SiteLayout } from "@/components/site/Layout";
+import { SimulationControls } from "@/components/site/SimulationControls";
 import { api } from "@/convex/_generated/api";
 import {
   ENVELOPE_MINT_BYTES,
@@ -637,6 +638,8 @@ export default function Explorer() {
           </CardContent>
         </Card>
         </div>
+
+        <SimulationControls />
       </PageShell>
     </SiteLayout>
   );
