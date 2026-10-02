@@ -4,15 +4,18 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * "Glitch" — the FontSpace display face (Roman Polishchuk), self-hosted.
- * Drop the licensed TTF at public/fonts/Glitch.ttf and it takes priority
- * over the fallback below. Until then Rubik Glitch (OFL) renders the
- * glitch aesthetic from the Google Fonts CDN.
+ * "Glitch" — the display face (Roman Polishchuk; "Glitch Demo" build is
+ * what FontSpace ships). Self-hosted: drop the TTF into public/fonts/ as
+ * either Glitch.ttf or "Glitch Demo.ttf" — all candidate paths are listed
+ * below and the first one that exists wins. Until then headings fall back
+ * to Space Grotesk.
  */
 @font-face {
   font-family: "Glitch";
   src: url("/fonts/Glitch.woff2") format("woff2"),
-    url("/fonts/Glitch.ttf") format("truetype");
+    url("/fonts/Glitch.ttf") format("truetype"),
+    url("/fonts/Glitch%20Demo.woff2") format("woff2"),
+    url("/fonts/Glitch%20Demo.ttf") format("truetype");
   font-weight: 400 700;
   font-display: swap;
 }
@@ -59,8 +62,8 @@
   /* Typography: Glitch display, Inter body, JetBrains Mono data */
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
     sans-serif;
-  --font-display: "Glitch", "Rubik Glitch", "Space Grotesk", "Inter",
-    ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Glitch", "Space Grotesk", "Inter", ui-sans-serif,
+    system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
     Consolas, monospace;
 }
