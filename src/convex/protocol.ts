@@ -701,44 +701,6 @@ export const sendPrivate = mutation({
 });
 
 /**
- * Devnet control: jump the mint to its sold-out state so the market's
- * open-at-sellout behavior is demonstrable without minting 21,000 lots.
- * Labeled as a simulation everywhere it is surfaced.
- */
-export const simulateSellout = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const state = await ensureProtocolState(ctx);
-    // Idempotent even after an older sellout that skipped fee routing:
-    // route the implied fees for the lots that never went through real
-    // invoices, so vault depositors can claim what sellout should have paid.
-    const alreadyOpen = state.marketOpen;
-    const pool = await ensureVaultPool(ctx);
-
-    // Route the fees the sold-out mint would have collected for the lots
-    // that never went through real invoices (priced at the open rate), so
-    // the vault demo is coherent: depositors can claim mint fees.
-    const alreadyMinted = state.mintedTokens;
-    const unmintedLots = Math.floor(
-      Math.max(0, state.totalSupply - alreadyMinted) / LOT_SIZE,
-    );
-    const gross = unmintedLots * OPEN_RATE_LAMPORTS;
-    const mintFee = Math.ceil((gross * MINT_FEE_BPS) / 10_000);
-    const liquidityCut = gross - mintFee;
-    if (mintFee > 0) await routeFee(ctx, state, pool, mintFee);
-
-    await ctx.db.patch(state._id, {
-      mintedTokens: state.totalSupply,
-      mintOpen: false,
-      marketOpen: true,
-      liquiditySeeded: true,
-      liquidityLamports: state.liquidityLamports + liquidityCut,
-    });
-    return alreadyOpen ? { opened: false } : { opened: true };
-  },
-});
-
-/**
  * What the explorer shows: every envelope with its proof, fee and slot — and
  * nothing about who owns what.
  */

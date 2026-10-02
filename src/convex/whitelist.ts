@@ -240,27 +240,6 @@ export const setWhitelistOpen = mutation({
   },
 });
 
-/**
- * TESTING ONLY. Flip to `false` (and delete `SimulationControls` + this
- * mutation) before launch. While true, ANY signed-in account can grant itself
- * the admin role, which unlocks the destructive reset console.
- */
-const ALLOW_FOUNDER_BOOTSTRAP = true;
-
-/**
- * Testing-only founder bootstrap: any signed-in account becomes admin, no
- * matter which account it is or whether an admin already exists. This exists
- * purely so the reset console is always reachable during testing; it is not an
- * authorization model and must not ship to production.
- */
-export const claimFounder = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const userId = await requireUserId(ctx);
-    if (!ALLOW_FOUNDER_BOOTSTRAP) return { claimed: false as const, reason: "disabled" as const };
-    const user = await ctx.db.get(userId);
-    if (user?.role === "admin") return { claimed: true as const, reason: "already_admin" as const };
-    await ctx.db.patch(userId, { role: "admin" });
-    return { claimed: true as const, reason: "claimed" as const };
-  },
-});
+// NOTE: the testing-only `claimFounder` bootstrap has been removed. Admin
+// access is granted out-of-band (assigned directly in the Convex dashboard);
+// no client-callable mutation may elevate an account to `admin`.

@@ -95,15 +95,20 @@
 - [ ] Funded insurance under a voted claim policy
 - [ ] Governance: real votes, not the current weight preview
 
-### Test scaffolding (remove before launch)
-- [ ] Set `ALLOW_FOUNDER_BOOTSTRAP = false` in `src/convex/whitelist.ts`
-      (currently `true`: any signed-in account can grant itself admin)
-- [ ] Delete the `claimFounder` mutation and `SimulationControls` component,
-      and remove it from `/mint`, `/dashboard`, `/explorer`
-- [ ] Delete `operations:resetSimulation`, `operations:setPaused`,
-      `operations:founderDiagnostics` (unauthenticated — leaks admin emails)
-- [ ] Remove the faucet / demo funding hooks and `simulateSellout`, `seed`
-- [ ] Strip the removal-tooling leftovers so no test-only mutation ships
+### Test scaffolding (removed)
+- [x] Removed the `ALLOW_FOUNDER_BOOTSTRAP` / `claimFounder` bootstrap
+      (`src/convex/whitelist.ts`) — no client-callable path can grant `admin`
+- [x] Deleted the `SimulationControls` component and removed it from `/mint`,
+      `/dashboard`, `/explorer`
+- [x] Deleted `operations:resetSimulation` and `operations:founderDiagnostics`
+      (the latter was unauthenticated and leaked admin emails)
+- [x] Deleted `protocol:simulateSellout` (was callable by any client) and its
+      Market button; also removed the dead `pages/Whitelist.tsx`
+- [ ] Assign the first admin out-of-band (Convex dashboard) — there is now no
+      self-service admin path
+- [ ] `operations:setPaused` is retained deliberately: it is the emergency
+      pause switch in the rollback runbook (§5) and is covered by tests
+- [ ] Confirm no faucet / demo-funding hook remains reachable in `src/pages/Mint.tsx`
 
 ### Legal & comms
 - [ ] Legal review complete (token/custody/privacy)
