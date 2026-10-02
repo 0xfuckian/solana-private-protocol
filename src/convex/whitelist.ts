@@ -254,13 +254,20 @@ export const claimFounder = mutation({
     const user = await ctx.db.get(userId);
     if (user?.role === "admin") return { claimed: true as const, reason: "already_admin" as const };
 
-    const existingAdmin = await ctx.db
+    const admins = await ctx.db
       .query("users")
       .filter(q => q.eq(q.field("role"), "admin"))
-      .first();
-    if (existingAdmin) return { claimed: false as const, reason: "admin_exists" as const };
+      .collect();
 
+    // A real founder must be a claimable account. An anonymous / email-less
+    // stub (e.g. a stale test session) is not a permanent owner, so a signed-in
+    // account may supersede it. Once a real, email-bearing admin exists,
+    // claiming is closed for everyone else.
+    const realAdmin = admins.find(a => !!a.email);
+    if (realAdmin) return { claimed: false as const, reason: "admin_exists" as const };
+
+    for (const a of admins) await ctx.db.patch(a._id, { role: "user" });
     await ctx.db.patch(userId, { role: "admin" });
-    return { claimed: true as const, reason: "claimed" as const };
+    return { claimed: true as const, reason: admins.length ? ("superseded_stub" as const) : ("claimed" as const) };
   },
 });

@@ -40,7 +40,7 @@ export function SimulationControls() {
     try {
       const r = await claimFounder({});
       if (r.claimed) toast.success("Founder console unlocked.");
-      else toast.error("An admin already exists on this deployment. Sign in as that account to reset.");
+      else toast.error("A founder account already exists on this deployment (an account with an email). Sign in as that account to reset.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
     } finally {

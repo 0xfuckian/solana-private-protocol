@@ -44,6 +44,30 @@ async function clearTable(ctx: MutationCtx, table: TableNames) {
   }
 }
 
+export const founderDiagnostics = query({
+  args: {},
+  handler: async ctx => {
+    const users = await ctx.db.query("users").collect();
+    const admins = users.filter(u => u.role === "admin");
+    const wallets = await ctx.db.query("wallets").collect();
+    const state = await ctx.db.query("protocolState").withIndex("by_key", q => q.eq("key", "global")).unique();
+    const counts: Record<string, number> = {};
+    for (const t of ["notes", "nullifiers", "envelopes", "invoices", "orders", "trades", "burnEvents", "swapEvents", "assetEvents", "feeClaims", "merkleTreeNodes", "merkleRoots"] as const) {
+      counts[t] = (await ctx.db.query(t).collect()).length;
+    }
+    return {
+      users: users.length,
+      admins: admins.length,
+      hasAdmin: admins.length > 0,
+      adminEmails: admins.map(a => a.email ?? "(no email)"),
+      wallets: wallets.length,
+      mintedTokens: state?.mintedTokens ?? 0,
+      resetTokenConfigured: !!process.env.SOLZK_DEV_RESET_TOKEN,
+      rowCounts: counts,
+    };
+  },
+});
+
 export const getStatus = query({
   args: {},
   handler: async ctx => {
