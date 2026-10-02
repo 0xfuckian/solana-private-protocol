@@ -20,8 +20,10 @@ import {
   FileText,
   Fingerprint,
   Flame,
+  Layers,
   Search,
   ShieldCheck,
+  Shuffle,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
@@ -48,6 +50,27 @@ interface BurnRow {
   createdAt: number;
 }
 
+interface SwapRow {
+  _id: string;
+  direction: string;
+  solLamportsIn: number;
+  solLamportsOut: number;
+  tokensIn: number;
+  tokensOut: number;
+  feeLamports: number;
+  slot: number;
+  createdAt: number;
+}
+
+interface AssetEventRow {
+  _id: string;
+  kind: string;
+  symbol: string;
+  units: number;
+  slot: number;
+  createdAt: number;
+}
+
 function fmtTime(ms: number): string {
   return new Date(ms).toLocaleString("en-US", {
     month: "short",
@@ -68,6 +91,12 @@ export default function Explorer() {
     | undefined;
   const burns = useQuery(api.protocol.listBurns, { limit: 10 }) as
     | BurnRow[]
+    | undefined;
+  const swaps = useQuery(api.swap.listSwaps, { limit: 10 }) as
+    | SwapRow[]
+    | undefined;
+  const assetEvents = useQuery(api.protocol.listAssetEvents, { limit: 10 }) as
+    | AssetEventRow[]
     | undefined;
   const detail = useQuery(
     api.protocol.getEnvelope,
@@ -431,6 +460,144 @@ export default function Explorer() {
         </CardContent>
       </Card>
 
+      <Card className="mt-8">
+        <CardContent className="p-0">
+          <div className="flex items-center justify-between px-6 py-4">
+            <h2 className="flex items-center gap-2 text-base font-semibold">
+              <Shuffle className="size-4 text-primary" /> Private swap feed
+            </h2>
+            <GradientBadge>reserves move, identities don't</GradientBadge>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-y border-border/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                  <th className="px-6 py-3 font-medium">Direction</th>
+                  <th className="px-6 py-3 font-medium">Amount in</th>
+                  <th className="px-6 py-3 font-medium">Amount out</th>
+                  <th className="px-6 py-3 font-medium">Fee</th>
+                  <th className="px-6 py-3 font-medium">Slot</th>
+                  <th className="px-6 py-3 font-medium">Time</th>
+                </tr>
+              </thead>
+              <tbody className="font-mono-tabular">
+                {swaps === undefined ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-6 text-center text-muted-foreground">
+                      Loading…
+                    </td>
+                  </tr>
+                ) : swaps.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-6 text-center text-muted-foreground">
+                      No swaps yet — the pool lives on the Market page.
+                    </td>
+                  </tr>
+                ) : (
+                  swaps.map((s) => (
+                    <tr
+                      key={s._id}
+                      className="border-b border-border/40 transition-colors hover:bg-secondary/40"
+                    >
+                      <td className="px-6 py-3">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                            s.direction === "sol_to_tokens"
+                              ? "bg-primary/10 text-primary"
+                              : "bg-[#9945FF]/15 text-[#c9b4ff]"
+                          }`}
+                        >
+                          {s.direction === "sol_to_tokens" ? `SOL → ${TICKER}` : `${TICKER} → SOL`}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3">
+                        {s.solLamportsIn > 0
+                          ? `${lamportsToSol(s.solLamportsIn)} SOL`
+                          : `${formatTokenAmount(s.tokensIn)} ${TICKER}`}
+                      </td>
+                      <td className="px-6 py-3">
+                        {s.tokensOut > 0
+                          ? `${formatTokenAmount(s.tokensOut)} ${TICKER}`
+                          : `${lamportsToSol(s.solLamportsOut)} SOL`}
+                      </td>
+                      <td className="px-6 py-3">{lamportsToSol(s.feeLamports)} SOL</td>
+                      <td className="px-6 py-3">{s.slot.toLocaleString()}</td>
+                      <td className="px-6 py-3 text-muted-foreground">
+                        {fmtTime(s.createdAt)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-4">
+        <CardContent className="p-0">
+          <div className="flex items-center justify-between px-6 py-4">
+            <h2 className="flex items-center gap-2 text-base font-semibold">
+              <Layers className="size-4 text-primary" /> Asset shield flows
+            </h2>
+            <GradientBadge>SPL assets in sealed notes</GradientBadge>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-y border-border/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                  <th className="px-6 py-3 font-medium">Kind</th>
+                  <th className="px-6 py-3 font-medium">Asset</th>
+                  <th className="px-6 py-3 font-medium">Units</th>
+                  <th className="px-6 py-3 font-medium">Slot</th>
+                  <th className="px-6 py-3 font-medium">Time</th>
+                </tr>
+              </thead>
+              <tbody className="font-mono-tabular">
+                {assetEvents === undefined ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-6 text-center text-muted-foreground">
+                      Loading…
+                    </td>
+                  </tr>
+                ) : assetEvents.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-6 text-center text-muted-foreground">
+                      No asset flows yet — shield USDC, BONK or JUP from the Vault page.
+                    </td>
+                  </tr>
+                ) : (
+                  assetEvents.map((a) => (
+                    <tr
+                      key={a._id}
+                      className="border-b border-border/40 transition-colors hover:bg-secondary/40"
+                    >
+                      <td className="px-6 py-3">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize ${
+                            a.kind === "shield"
+                              ? "bg-primary/10 text-primary"
+                              : "bg-[#9945FF]/15 text-[#c9b4ff]"
+                          }`}
+                        >
+                          {a.kind}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3">{a.symbol}</td>
+                      <td className="px-6 py-3">{formatTokenAmount(a.units)}</td>
+                      <td className="px-6 py-3">{a.slot.toLocaleString()}</td>
+                      <td className="px-6 py-3 text-muted-foreground">
+                        {fmtTime(a.createdAt)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         <Card>
           <CardContent className="p-6">
@@ -444,6 +611,8 @@ export default function Explorer() {
               <li>Opaque nullifiers and commitments</li>
               <li>Mint amounts and ticker (supply must be auditable)</li>
               <li>Burns: buybacks, tier burns and exits, in full</li>
+              <li>Swap directions and reserve sizes; asset shields (in)</li>
+              <li>Fee-share claims: anchor and claim size, never the holder</li>
             </ul>
           </CardContent>
         </Card>
@@ -458,6 +627,8 @@ export default function Explorer() {
               <li>Sender and receiver of a transfer</li>
               <li>The amount transferred, or which token moved</li>
               <li>Which earlier note was spent</li>
+              <li>Who swapped, or which stealth address was paid</li>
+              <li>Unshield destinations' note history</li>
             </ul>
           </CardContent>
         </Card>

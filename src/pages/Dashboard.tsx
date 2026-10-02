@@ -31,6 +31,7 @@ import {
   Droplets,
   Eye,
   Flame,
+  Ghost,
   KeyRound,
   Link2,
   Loader2,
@@ -126,11 +127,12 @@ function SendCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
   const [feeInNote, setFeeInNote] = useState(false);
+  const [stealth, setStealth] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const payeeLabels = useQuery(
     api.asp.getLabels,
-    receiver.length === 44 ? { address: receiver } : "skip",
+    !stealth && receiver.length === 44 ? { address: receiver } : "skip",
   );
 
   const amountNum = Number(amount) || 0;
@@ -150,7 +152,11 @@ function SendCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
         </p>
         <div className="mt-4 space-y-3">
           <Input
-            placeholder="Receiver shielded address (44 chars)"
+            placeholder={
+              stealth
+                ? "Recipient stealth meta secret (hex)"
+                : "Receiver shielded address (44 chars)"
+            }
             value={receiver}
             onChange={(e) => setReceiver(e.target.value.trim())}
             className="font-mono-tabular text-xs"
@@ -190,6 +196,16 @@ function SendCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
               onChange={(e) => setMemo(e.target.value)}
               maxLength={24}
             />
+          </div>
+
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background px-3 py-2.5">
+            <div>
+              <p className="text-xs font-semibold">Stealth address</p>
+              <p className="text-[11px] leading-4 text-muted-foreground">
+                Pay a fresh one-time address — no stable identifier on chain.
+              </p>
+            </div>
+            <Switch checked={stealth} onCheckedChange={setStealth} />
           </div>
 
           <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background px-3 py-2.5">
@@ -248,14 +264,21 @@ function SendCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
             onClick={async () => {
               setBusy(true);
               try {
-                const res = await slk.sendPrivate(
-                  receiver,
-                  Number(amount),
-                  memo || "transfer",
-                  { feeInNote },
-                );
+                const res = stealth
+                  ? await slk.sendStealth(
+                      receiver,
+                      Number(amount),
+                      memo || "stealth transfer",
+                      { feeInNote },
+                    )
+                  : await slk.sendPrivate(
+                      receiver,
+                      Number(amount),
+                      memo || "transfer",
+                      { feeInNote },
+                    );
                 toast.success(
-                  `Sent. Envelope in slot ${res.slot.toLocaleString()} — ${shortAddress(res.signature, 8, 6)}${feeInNote ? " · relayer paid in-note" : ""}`,
+                  `Sent. Envelope in slot ${res.slot.toLocaleString()} — ${shortAddress(res.signature, 8, 6)}${stealth ? " · stealth" : ""}${feeInNote ? " · relayer paid in-note" : ""}`,
                 );
                 setReceiver("");
                 setAmount("");
@@ -776,6 +799,36 @@ function DashboardInner() {
               commitments and nullifiers. {shortAddress(wallet.address)} is
               yours alone.
             </p>
+            <div className="mt-3 rounded-lg border border-border/60 bg-background px-3 py-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium">Stealth meta secret</p>
+                  <code className="font-mono-tabular text-[11px] text-muted-foreground">
+                    {slk.viewKeys.stealthMeta
+                      ? `${slk.viewKeys.stealthMeta.slice(0, 14)}…${slk.viewKeys.stealthMeta.slice(-8)}`
+                      : "—"}
+                  </code>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={!slk.viewKeys.stealthMeta}
+                  onClick={() => {
+                    navigator.clipboard.writeText(slk.viewKeys.stealthMeta ?? "");
+                    toast.success(
+                      "Stealth meta copied — share it to receive one-time payments.",
+                    );
+                  }}
+                >
+                  <Ghost className="size-4" />
+                </Button>
+              </div>
+              <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                Publish this instead of a payment address: senders derive a
+                fresh one-time address per payment; only your scan recognizes
+                them. It never grants spend authority.
+              </p>
+            </div>
             <div className="mt-4 flex gap-2">
               <Button asChild variant="outline" size="sm">
                 <Link to="/vault">
@@ -822,7 +875,7 @@ function DashboardInner() {
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {n.memo} · slot {n.slot.toLocaleString()}
-                        {n.tagHit ? " · tag match" : ""}
+                        {n.stealth ? " · stealth" : n.tagHit ? " · tag match" : ""}
                       </p>
                     </div>
                     <span className="size-1.5 rounded-full bg-primary" />

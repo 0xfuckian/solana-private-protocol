@@ -334,13 +334,16 @@ export async function ephemeralMatchesTag(
 export async function sealNoteFor(
   receiverAddress: string,
   note: { value: number; memo: string; r: string },
+  presetNonceB64?: string,
 ): Promise<SealedNote> {
   const eph = crypto.getRandomValues(new Uint8Array(16));
   // Embed the view tag: the receiver's scanner matches this byte first.
   const tag = await viewTagFor(receiverAddress);
   eph[0] = tag;
   const taggedB64 = bufToB64(eph.buffer);
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const iv = presetNonceB64
+    ? b64ToBuf(presetNonceB64)
+    : crypto.getRandomValues(new Uint8Array(12));
   const keyMaterial = await sha256Hex(
     `solzk-view:${receiverAddress}:${taggedB64}`,
   );
@@ -367,6 +370,65 @@ export async function sealNoteFor(
     nonce: bufToB64(iv.buffer),
     ciphertext: bufToB64(ct),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Stealth addresses — one-time payment addresses derived from a meta secret
+// ---------------------------------------------------------------------------
+
+/**
+ * The stealth meta secret: derived from the seed, published in place of a
+ * payment address. Anyone can derive fresh one-time addresses for you from
+ * it; only the holder can scan the pool and recognize which notes are
+ * theirs. The published meta secret never grants spend authority.
+ */
+export async function stealthMetaFromSeedHex(seedHex: string): Promise<string> {
+  return sha256Hex("solzk-stealth-meta-v1:" + seedHex);
+}
+
+/**
+ * Derive a one-time stealth address from a recipient's meta secret and a
+ * fresh ephemeral only the sender knows. The same (meta, ephemeral) pair
+ * always yields the same address, which is what lets the receiver scan.
+ */
+export async function stealthAddressFor(
+  metaSecret: string,
+  ephemeral: string,
+): Promise<string> {
+  const hash = await sha256Hex(`solzk-stealth-addr:${metaSecret}:${ephemeral}`);
+  return pseudoBase58(44, mulberryFromHex(hash));
+}
+
+/**
+ * Seal a note to a stealth address. The one-time address is derived from
+ * (meta secret, nonce) and the SAME nonce is baked into the sealed note —
+ * so the note carries its own derivation input and the receiver's scanner
+ * needs nothing beyond the published envelope.
+ */
+export async function sealNoteForStealth(
+  metaSecret: string,
+  note: { value: number; memo: string; r: string },
+): Promise<{ sealed: SealedNote; stealthAddress: string }> {
+  const nonceB64 = bufToB64(
+    crypto.getRandomValues(new Uint8Array(12)).buffer,
+  );
+  const stealthAddress = await stealthAddressFor(metaSecret, nonceB64);
+  const sealed = await sealNoteFor(stealthAddress, note, nonceB64);
+  return { sealed, stealthAddress };
+}
+
+/**
+ * Stealth scan: re-derive the one-time address from (my meta, the note's
+ * published nonce) and trial-decrypt. Without the meta secret the
+ * derivation is indistinguishable from randomness — the ledger cannot link
+ * the stealth address to its owner.
+ */
+export async function tryUnsealStealthNote(
+  metaSecret: string,
+  sealed: SealedNote,
+): Promise<{ value: number; memo: string; r: string } | null> {
+  const addr = await stealthAddressFor(metaSecret, sealed.nonce);
+  return tryUnsealNote(addr, sealed);
 }
 
 /** Trial-decrypt: returns null when the note is not ours. */

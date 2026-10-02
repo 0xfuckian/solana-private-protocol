@@ -10,6 +10,8 @@ import {
   MARKET_FEE_BPS,
   TICKER,
   TOTAL_SUPPLY,
+  assetBySymbol,
+  formatAssetUnits,
   formatTokenAmount,
   lamportsToSol,
 } from "@/lib/protocol";
@@ -17,11 +19,14 @@ import { useSolzk } from "@/lib/solzk-context";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  CheckCircle2,
   Clock3,
   Droplets,
   Flame,
   HandCoins,
+  Layers,
   Loader2,
+  Scale,
   ShieldCheck,
 } from "lucide-react";
 import { useState } from "react";
@@ -325,6 +330,310 @@ function LiquidityPanel() {
   );
 }
 
+function ClaimsCard() {
+  const slk = useSolzk();
+  const seed = useMutation(api.protocol.seedClaimsPool);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [anchor, setAnchor] = useState<{ slot: number; root: string } | null>(
+    null,
+  );
+  const [last, setLast] = useState<{ paidLamports: number } | null>(null);
+
+  const claimsPoolTokens = slk.protocol?.claimsPoolTokens ?? 0;
+  const lastAnchorAt = slk.protocol?.lastAnchorAt;
+
+  const claimSize = 1_000; // demo claim: 1,000 SOLZK held at the anchor
+  const canClaim =
+    anchor !== null &&
+    slk.notes.some((n) => n.value >= claimSize) &&
+    claimsPoolTokens > 0;
+
+  return (
+    <Card className="border-dashed">
+      <CardContent className="p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="flex items-center gap-2 text-sm font-semibold">
+            <Scale className="size-4 text-primary" /> ZK fee-share claims
+          </p>
+          <GradientBadge>pro-rata · private</GradientBadge>
+        </div>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          Prove you held value at a past anchor without revealing who you are
+          or how much you hold now — the circuit's answer to fee sharing.
+          Checkpoint the anchor, then claim your slice of the claims pool.
+        </p>
+
+        {claimsPoolTokens === 0 ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            disabled={busy !== null}
+            onClick={async () => {
+              setBusy("seed");
+              try {
+                const r = await seed({});
+                toast.success(
+                  r.seeded
+                    ? `Claims pool funded with ${formatTokenAmount(r.tokens ?? 0)} ${TICKER}.`
+                    : "Claims pool already funded.",
+                );
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Seed failed");
+              } finally {
+                setBusy(null);
+              }
+            }}
+          >
+            {busy === "seed" ? (
+              <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+            ) : (
+              <Scale className="mr-1.5 size-3.5" />
+            )}
+            Fund the claims pool (devnet)
+          </Button>
+        ) : (
+          <div className="mt-3 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-background px-3 py-2 text-xs">
+              <span className="text-muted-foreground">Claims pool</span>
+              <span className="font-mono-tabular">
+                {formatTokenAmount(claimsPoolTokens)} {TICKER}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-background px-3 py-2 text-xs">
+              <span className="text-muted-foreground">
+                Anchor{lastAnchorAt ? ` · ${new Date(lastAnchorAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}` : ""}
+              </span>
+              <span className="font-mono-tabular">
+                {anchor
+                  ? `slot ${anchor.slot.toLocaleString()} · ${anchor.root.slice(0, 12)}…`
+                  : "not checkpointed"}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy !== null}
+                onClick={async () => {
+                  setBusy("anchor");
+                  try {
+                    const a = await slk.checkpointAnchor();
+                    setAnchor(a);
+                    toast.success(`Anchor checkpointed at slot ${a.slot.toLocaleString()}.`);
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Checkpoint failed");
+                  } finally {
+                    setBusy(null);
+                  }
+                }}
+              >
+                {busy === "anchor" ? (
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="mr-1.5 size-3.5" />
+                )}
+                Checkpoint anchor
+              </Button>
+              <Button
+                size="sm"
+                className="bg-sol-gradient font-semibold text-[#04101a] hover:opacity-90"
+                disabled={!canClaim || busy !== null}
+                onClick={async () => {
+                  if (!anchor) return;
+                  setBusy("claim");
+                  try {
+                    const r = await slk.claimFeeShare(
+                      claimSize,
+                      anchor.slot,
+                      anchor.root,
+                    );
+                    setLast({ paidLamports: r.paidLamports });
+                    toast.success(
+                      `Fee share claimed — ${lamportsToSol(r.paidLamports)} SOL paid to your wallet. The proof revealed only the claim size.`,
+                    );
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Claim failed");
+                  } finally {
+                    setBusy(null);
+                  }
+                }}
+              >
+                {busy === "claim" ? (
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                ) : (
+                  <HandCoins className="mr-1.5 size-3.5" />
+                )}
+                Claim {formatTokenAmount(claimSize)}-holder share
+              </Button>
+            </div>
+            {last && (
+              <p className="text-[11px] text-muted-foreground">
+                Last claim paid {lamportsToSol(last.paidLamports)} SOL. Each
+                (wallet, anchor, size) claim is one-time — nullifier-bound.
+              </p>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function AssetShieldCard() {
+  const slk = useSolzk();
+  const myAssets = useQuery(
+    api.protocol.getMyAssets,
+    slk.phase === "unlocked" ? {} : "skip",
+  ) as { symbol: string; units: number }[] | undefined;
+  const [symbol, setSymbol] = useState("USDC");
+  const [units, setUnits] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const asset = assetBySymbol(symbol);
+  const unitsNum = Number(units) || 0;
+  const transparent = myAssets?.find((a) => a.symbol === symbol)?.units ?? 0;
+  const sealedBalance = slk.notes
+    .filter((n) => n.memo === `asset:${symbol}`)
+    .reduce((acc, n) => acc + n.value, 0);
+
+  return (
+    <Card>
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold">Multi-asset shield</h2>
+          <Layers className="size-4 text-primary" />
+        </div>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          Wrap any SPL asset into the sealed-note format. The asset id is a
+          public input to the join-split; amounts and owners stay hidden.
+          Devnet ships three mock assets with a faucet.
+        </p>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {["USDC", "BONK", "JUP"].map((s) => (
+            <button
+              key={s}
+              onClick={() => {
+                setSymbol(s);
+                setUnits("");
+              }}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+                symbol === s
+                  ? "border-primary/50 bg-primary/10 text-primary"
+                  : "border-border/70 text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-3 space-y-1 rounded-lg border border-border/60 bg-background px-3 py-2 text-xs">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Transparent balance</span>
+            <span className="font-mono-tabular">
+              {asset ? formatAssetUnits(symbol, transparent) : "—"}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Sealed (shielded)</span>
+            <span className="font-mono-tabular text-primary">
+              {asset ? formatAssetUnits(symbol, sealedBalance) : "—"}
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-3 flex gap-2">
+          <Input
+            type="number"
+            placeholder="Raw units"
+            value={units}
+            onChange={(e) => setUnits(e.target.value)}
+            className="font-mono-tabular"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy !== null || unitsNum <= 0 || unitsNum > transparent}
+            onClick={async () => {
+              setBusy("shield");
+              try {
+                await slk.shieldAsset(symbol, unitsNum);
+                toast.success(`${symbol} shielded — the note hides amount and owner.`);
+                setUnits("");
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Shield failed");
+              } finally {
+                setBusy(null);
+              }
+            }}
+          >
+            {busy === "shield" ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <ArrowDownToLine className="size-3.5" />
+            )}
+            Shield
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={
+              busy !== null ||
+              unitsNum <= 0 ||
+              sealedBalance < unitsNum
+            }
+            onClick={async () => {
+              setBusy("unshield");
+              try {
+                await slk.unshieldAsset(symbol, unitsNum);
+                toast.success(`${symbol} unshielded to your transparent balance.`);
+                setUnits("");
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Unshield failed");
+              } finally {
+                setBusy(null);
+              }
+            }}
+          >
+            {busy === "unshield" ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <ArrowUpFromLine className="size-3.5" />
+            )}
+            Unshield
+          </Button>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-2"
+          disabled={busy !== null}
+          onClick={async () => {
+            setBusy("faucet");
+            try {
+              await slk.assetFaucet(symbol);
+              toast.success(`Devnet ${symbol} granted.`);
+            } catch (e) {
+              toast.error(e instanceof Error ? e.message : "Faucet failed");
+            } finally {
+              setBusy(null);
+            }
+          }}
+        >
+          {busy === "faucet" ? (
+            <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+          ) : (
+            <Droplets className="mr-1.5 size-3.5 text-primary" />
+          )}
+          Asset faucet
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 function KeeperCard() {
   const slk = useSolzk();
   const runBuyback = useMutation(api.protocol.executeBuyback);
@@ -394,6 +703,10 @@ export default function Vault() {
           </div>
           <LiquidityPanel />
           <KeeperCard />
+          <div className="grid gap-6 lg:grid-cols-2">
+            <ClaimsCard />
+            <AssetShieldCard />
+          </div>
         </PageShell>
       </SiteLayout>
     </RequireAuth>

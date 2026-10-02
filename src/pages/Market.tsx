@@ -13,6 +13,7 @@ import {
   formatTokenAmount,
   lamportsToSol,
 } from "@/lib/protocol";
+import { useMemo } from "react";
 import { useSolzk } from "@/lib/solzk-context";
 import { buildProof, commitmentFor, sealNoteFor } from "@/lib/wallet";
 import {
@@ -25,6 +26,7 @@ import {
   Loader2,
   Lock,
   ShieldCheck,
+  Shuffle,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -183,6 +185,200 @@ function OrderTicket() {
               <ArrowDownUp className="mr-2 size-4" />
             )}
             Place {side} order
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SwapCard() {
+  const slk = useSolzk();
+  const seed = useMutation(api.protocol.seedSwapPool);
+  const [direction, setDirection] = useState<"sol_to_tokens" | "tokens_to_sol">(
+    "sol_to_tokens",
+  );
+  const [solAmt, setSolAmt] = useState("0.5");
+  const [tokAmt, setTokAmt] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const pool = slk.swapPool;
+  const solNum = Number(solAmt) || 0;
+  const tokNum = Number(tokAmt) || 0;
+
+  const quote = useMemo(() => {
+    if (!pool?.open) return null;
+    return direction === "sol_to_tokens"
+      ? slk.quoteSwapSol(Math.round(solNum * 100_000_000))
+      : slk.quoteSwapTokens(tokNum);
+  }, [direction, solNum, tokNum, pool, slk]);
+
+  if (!pool) return null;
+
+  if (!pool.open) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold">Private swap</h2>
+            <Shuffle className="size-4 text-primary" />
+          </div>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            A constant-product pool owned by the protocol — swap SOLZK for
+            SOL and back without an order book, without unshielding. The
+            devnet reserves need seeding once.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const r = await seed({});
+                toast.success(
+                  r.seeded
+                    ? "Swap reserves seeded at the open mint rate."
+                    : "Reserves already seeded.",
+                );
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Seed failed");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Shuffle className="mr-1.5 size-3.5" />}
+            Seed devnet reserves
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold">Private swap</h2>
+          <GradientBadge>0.3% · to the vault + treasury</GradientBadge>
+        </div>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          Route through the protocol pool without an order book. SOL→{TICKER}
+          {" "}seals the output as a note; {TICKER}→SOL spends notes by
+          nullifier. The node never sees the shielded leg.
+        </p>
+
+        <div className="mt-4 grid grid-cols-2 gap-2 rounded-lg bg-muted p-1">
+          {([
+            ["sol_to_tokens", `SOL → ${TICKER}`],
+            ["tokens_to_sol", `${TICKER} → SOL`],
+          ] as const).map(([d, label]) => (
+            <button
+              key={d}
+              onClick={() => setDirection(d)}
+              className={`rounded-md py-2 text-xs font-semibold transition-colors ${
+                direction === d
+                  ? "bg-primary/15 text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4 space-y-3">
+          <Input
+            type="number"
+            placeholder={direction === "sol_to_tokens" ? "Amount (SOL)" : `Amount (${TICKER})`}
+            value={direction === "sol_to_tokens" ? solAmt : tokAmt}
+            onChange={(e) =>
+              direction === "sol_to_tokens"
+                ? setSolAmt(e.target.value)
+                : setTokAmt(e.target.value)
+            }
+            className="font-mono-tabular"
+          />
+          <div className="rounded-lg border border-border/60 bg-background px-3 py-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Mid price</span>
+              <span className="font-mono-tabular">
+                {pool.midPriceLamportsPerToken > 0
+                  ? `${lamportsToSol(Math.round(pool.midPriceLamportsPerToken))} SOL / ${TICKER}`
+                  : "—"}
+              </span>
+            </div>
+            {quote && (
+              <>
+                <div className="mt-1 flex justify-between">
+                  <span className="text-muted-foreground">You receive</span>
+                  <span className="font-mono-tabular text-primary">
+                    {direction === "sol_to_tokens"
+                      ? `${formatTokenAmount(quote.outAmount)} ${TICKER}`
+                      : `${lamportsToSol(quote.outAmount)} SOL`}
+                  </span>
+                </div>
+                <div className="mt-1 flex justify-between">
+                  <span className="text-muted-foreground">
+                    Fee + impact
+                  </span>
+                  <span className="font-mono-tabular">
+                    {lamportsToSol(quote.feeLamports)} SOL · {quote.priceImpactPct < 0.01 ? "<0.01" : quote.priceImpactPct.toFixed(2)}%
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+          <Button
+            className="w-full bg-sol-gradient font-semibold text-[#04101a] hover:opacity-90"
+            disabled={
+              busy ||
+              !quote ||
+              (direction === "sol_to_tokens"
+                ? solNum <= 0 ||
+                  solNum * 100_000_000 > (slk.serverWallet?.fundingLamports ?? 0)
+                : tokNum <= 0 || tokNum > slk.balance)
+            }
+            onClick={async () => {
+              setBusy(true);
+              try {
+                if (direction === "sol_to_tokens") {
+                  const lamportsIn = Math.round(solNum * 100_000_000);
+                  const q = slk.quoteSwapSol(lamportsIn);
+                  if (!q) throw new Error("No quote — try again.");
+                  const r = (await slk.swap("sol_to_tokens", lamportsIn, q.outAmount)) as {
+                    tokensOut: number;
+                  };
+                  toast.success(
+                    `Swapped — ${formatTokenAmount(r.tokensOut)} ${TICKER} sealed to your wallet.`,
+                  );
+                  setSolAmt("");
+                } else {
+                  const q = slk.quoteSwapTokens(tokNum);
+                  if (!q) throw new Error("No quote — try again.");
+                  const r = (await slk.swap("tokens_to_sol", tokNum, q.outAmount)) as {
+                    lamportsOut: number;
+                  };
+                  toast.success(
+                    `Swapped — ${lamportsToSol(r.lamportsOut)} SOL paid to your wallet.`,
+                  );
+                  setTokAmt("");
+                }
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Swap failed");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? (
+              <Loader2 className="mr-2 size-4 animate-spin" />
+            ) : (
+              <Shuffle className="mr-2 size-4" />
+            )}
+            Swap privately
           </Button>
         </div>
       </CardContent>
@@ -479,6 +675,7 @@ function MarketInner() {
     <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
       <div className="space-y-6">
         <OrderTicket />
+        <SwapCard />
         <RedeemCard />
       </div>
 

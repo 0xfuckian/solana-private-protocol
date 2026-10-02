@@ -439,6 +439,30 @@ export default function Protocol() {
                 "/dashboard",
                 "Open the label registry",
               ],
+              [
+                "Private swap",
+                "A constant-product pool owned by the protocol: swap SOLZK for SOL and back without an order book, without unshielding. The SOL leg is verified; the shielded leg is proven, never read.",
+                "/market",
+                "Try the private swap",
+              ],
+              [
+                "Stealth addresses",
+                "Publish a meta secret instead of a payment address. Senders derive a fresh one-time address per payment; your scan recognizes them — the chain never sees a stable identifier.",
+                "/dashboard",
+                "Get your stealth meta",
+              ],
+              [
+                "Multi-asset shield",
+                "Any SPL asset wraps into the sealed-note format — the asset id is a public input to the join-split, amounts and owners stay hidden. Devnet ships USDC, BONK and JUP with a faucet.",
+                "/vault",
+                "Shield an SPL asset",
+              ],
+              [
+                "ZK fee-share claims",
+                "Prove you held value at a past anchor without revealing balance or identity, and claim a pro-rata slice of the fee pool. Nullifier-bound, one claim per anchor.",
+                "/vault",
+                "Make a fee-share claim",
+              ],
             ].map(([title, body, href, cta]) => (
               <div
                 key={title}
@@ -460,22 +484,22 @@ export default function Protocol() {
           <p className="mt-5 text-sm leading-6 text-muted-foreground">
             On the real chain these map to one generalized join-split circuit
             with a single instruction set — initialize_pool, shield, transfer,
-            unshield, swap, register_asp, claim_or_burn_fees — but the
-            guarantees they demo here are the same shape: uniform envelopes,
-            nullifier double-spend protection, and a ledger that stores
-            commitments and ciphertexts only.
+            unshield, swap, register_asp, claim_or_burn_fees — and this build
+            exercises the full instruction set: the guarantees they demo here
+            are the same shape (uniform envelopes, nullifier double-spend
+            protection, commitments and ciphertexts only). The simulation
+            stands in for the circuit; the ledger discipline is real.
           </p>
         </Section>
 
         <Section id="roadmap" num="08" kicker="Roadmap" title="What comes next">
           <p>
-            Still ahead of this build: private swaps routed through a DEX
-            without unshielding, shield for arbitrary SPL assets, and stealth
-            addresses so a published payment address stops being a stable
-            identifier. Fee sharing through zero-knowledge claims — proving
-            you held value at a past anchor without revealing who you are —
-            remains a real circuit to design and audit, not a configuration
-            change.
+            Every mechanism in the architecture section above is running in
+            this devnet build. What remains between here and mainnet is the
+            hard part: replacing the simulated proofs with a real join-split
+            circuit (Poseidon commitments, Groth16 over BLS12-381, audited),
+            moving the AMM to permissionless LPs, and the operational work of
+            relayers and indexers anyone can run.
           </p>
           <p>
             Read the roadmap as intent, not as a promise of delivery or of

@@ -24,9 +24,11 @@ import {
   MINT_FEE_BPS,
   OPEN_MAX_LOTS,
   OPEN_RATE_LAMPORTS,
+  REDEEM_LAMPORTS_PER_TOKEN,
   RELAYER_FEE_LAMPORTS,
   RELAYER_FEE_NOTE_TOKENS,
   type RateTier,
+  assetBySymbol,
   discountTierForBurned,
   effectiveSupply,
   hexHashOf,
@@ -149,6 +151,12 @@ export const getState = query({
       ),
       relayerFeesTokens: state.relayerFeesTokens ?? 0,
       lastBuybackAt: state.lastBuybackAt,
+      // Private swap AMM reserves.
+      swapSolReserve: state.swapSolReserve ?? 0,
+      swapTokenReserve: state.swapTokenReserve ?? 0,
+      // ZK fee-share claims pool + anchor checkpoint.
+      claimsPoolTokens: state.claimsPoolTokens ?? 0,
+      lastAnchorAt: state.lastAnchorAt,
       lotSize: state.lotSize,
       mintedTokens: state.mintedTokens,
       mintOpen: state.mintOpen,
@@ -918,7 +926,77 @@ export const redeem = mutation({
   },
 });
 
-/** The public burn feed: buybacks, tier burns and exits, newest first. */
+// ---------------------------------------------------------------------------
+// Private swap pool bootstrap + claims pool seed (devnet simulation hooks)
+// ---------------------------------------------------------------------------
+
+/**
+ * Devnet simulation control: size the claims pool to a fixed fraction of
+ * lifetime routed fees — the same relationship the protocol spec proposes
+ * (a slice of every fee funds the fee-share claims pool on mainnet).
+ */
+export const seedClaimsPool = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const state = await ensureProtocolState(ctx);
+    if ((state.claimsPoolTokens ?? 0) > 0) return { seeded: false };
+    // 0.1% of effective supply: 210,000 SOLZK at genesis.
+    const tokens = Math.floor(state.totalSupply * 0.001);
+    await ctx.db.patch(state._id, { claimsPoolTokens: tokens });
+    return { seeded: true, tokens };
+  },
+});
+
+/**
+ * Devnet simulation control: seed the private swap AMM reserves. On
+ * mainnet the pool is seeded from protocol liquidity; here it is a
+ * one-click fixture. See convex/swap.ts for the swap logic itself.
+ */
+export const seedSwapPool = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const state = await ensureProtocolState(ctx);
+    if ((state.swapSolReserve ?? 0) > 0 && (state.swapTokenReserve ?? 0) > 0) {
+      return { seeded: false };
+    }
+    // 35 SOL ↔ 10,000,000 SOLZK → 350 lamports/token, the open mint rate.
+    await ctx.db.patch(state._id, {
+      swapSolReserve: 3_500_000_000,
+      swapTokenReserve: 10_000_000,
+    });
+    return { seeded: true };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// ZK fee-share claims — prove you held value at a past anchor, claim from
+// the claims pool, without revealing balance or identity.
+// ---------------------------------------------------------------------------
+
+/**
+ * The public fee anchor: a running checkpoint of (slot, fee pool size).
+ * Anyone checkpointing — a keeper, an indexer, you — advances the anchor;
+ * the previous root stays on chain for anyone to prove against later.
+ * In the real circuit this root is the Merkle root of the commitment tree
+ * at that slot; here it is a hash binding slot and pool size, and the
+ * holder's witness is their note commitment.
+ */
+export const checkpointAnchor = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const state = await ensureProtocolState(ctx);
+    const pool = await ensureVaultPool(ctx);
+    const slot = Math.floor((Date.now() - state.genesisMs) / 400);
+    const root = sha256Hex(
+      `solzk-anchor:${slot}:${pool.depositedTokens}:${pool.feePoolLamports}:${state.totalFeePoolCheckpoint ?? 0}`,
+    );
+    await ctx.db.patch(state._id, {
+      lastAnchorAt: Date.now(),
+      totalFeePoolCheckpoint: pool.feePoolLamports,
+    });
+    return { slot, root };
+  },
+});
 export const listBurns = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
@@ -931,7 +1009,323 @@ export const listBurns = query({
   },
 });
 
-/** The caller's invoices, newest first — the dashboard's payment history. */
+/**
+ * ZK fee-share claim. The prover states: "at anchor slot S, I held a note
+ * of value V; its commitment is in the anchor's set." The claim nullifier
+ * binds (wallet, anchor, value) so each claim can be made once; the proof
+ * commits to the witness — the node verifies the statement, not the
+ * balance, and learns nothing beyond the claim size.
+ *
+ * Payout: pro-rata slice of the claims pool in SOL, funded by a slice of
+ * protocol fees (see seedClaimsPool for the devnet sizing).
+ */
+export const claimFeeShare = mutation({
+  args: {
+    anchorSlot: v.number(),
+    anchorRoot: v.string(),
+    holderCommitment: v.string(),
+    tokens: v.number(),
+    proof: v.string(),
+  },
+  handler: async (ctx, { anchorSlot, anchorRoot, holderCommitment, tokens, proof }) => {
+    const userId = await requireUserId(ctx);
+    const wallet = await getWalletForUserOrThrow(ctx, userId);
+    const state = await ensureProtocolState(ctx);
+
+    if ((state.claimsPoolTokens ?? 0) <= 0) {
+      throw new Error("The claims pool is not funded yet.");
+    }
+    if (!Number.isInteger(tokens) || tokens <= 0) {
+      throw new Error("Claim value must be a positive integer.");
+    }
+    // The nullifier binds the claim once per (wallet, anchor, value).
+    const claimNullifier = sha256Hex(
+      `solzk-claim-nul:${wallet.address}:${anchorSlot}:${holderCommitment}:${tokens}`,
+    );
+    const seen = await ctx.db
+      .query("feeClaims")
+      .withIndex("by_nullifier", (q) => q.eq("claimNullifier", claimNullifier))
+      .first();
+    if (seen) {
+      throw new Error("This claim was already made — nullifier seen.");
+    }
+    const statement = `feeshare:${anchorSlot}:${anchorRoot}:${holderCommitment}:${tokens}`;
+    const expected = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
+    if (expected !== proof) {
+      throw new Error("Proof rejected: it does not commit to these bytes.");
+    }
+    // The witness must be a real note in the pool at (or before) the anchor.
+    const note = await ctx.db
+      .query("notes")
+      .withIndex("by_commitment", (q) => q.eq("commitment", holderCommitment))
+      .first();
+    if (!note || note.slot > anchorSlot) {
+      throw new Error("Witness rejected: commitment not in the pool at the anchor.");
+    }
+
+    // Payout: 1% of the claimed value's SOL equivalent, funded by the
+    // claims pool — a slice of protocol fees returned to proven holders.
+    const poolTokens = state.claimsPoolTokens ?? 0;
+    const payoutLamports = Math.floor(
+      (tokens * REDEEM_LAMPORTS_PER_TOKEN) / 100,
+    );
+    const tokensConsumed = Math.ceil(
+      payoutLamports / REDEEM_LAMPORTS_PER_TOKEN,
+    );
+    if (tokensConsumed > poolTokens) {
+      throw new Error(
+        "The claims pool is exhausted for this claim size — try a smaller claim or wait for fees to accrue.",
+      );
+    }
+
+    const slot = Math.floor((Date.now() - state.genesisMs) / 400);
+    const signature = hexHashOf(
+      `claim:${wallet.address}:${Date.now()}:${Math.floor(Math.random() * 0xffffff)}`,
+    );
+
+    await ctx.db.insert("feeClaims", {
+      walletId: wallet._id,
+      anchorSlot,
+      anchorRoot,
+      holderCommitment,
+      claimNullifier,
+      tokens,
+      paidLamports: payoutLamports,
+      signature,
+      createdAt: Date.now(),
+    });
+    await ctx.db.patch(state._id, {
+      claimsPoolTokens: poolTokens - tokensConsumed,
+    });
+    await ctx.db.patch(wallet._id, {
+      fundingLamports: wallet.fundingLamports + payoutLamports,
+    });
+
+    return { paidLamports: payoutLamports, signature, slot };
+  },
+});
+
+/** Recent ZK fee-share claims — public feed for the vault page. */
+export const listFeeClaims = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
+    return ctx.db
+      .query("feeClaims")
+      .withIndex("by_created")
+      .order("desc")
+      .take(limit ?? 10);
+  },
+});
+
+/** The caller's own claims. */
+export const listMyFeeClaims = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
+    const wallet = await getWalletForUser(ctx, userId);
+    if (!wallet) return [];
+    const claims = await ctx.db
+      .query("feeClaims")
+      .withIndex("by_created")
+      .order("desc")
+      .collect();
+    return claims.filter((c) => c.walletId === wallet._id);
+  },
+});
+
+/**
+ * Multi-asset shield, devnet slice: wrap mock SPL assets into the sealed
+ * note format. `assetMint` binds the note to an asset (in the full design
+ * the note's asset_id is a public input to the join-split circuit). The
+ * devnet faucet grants mock units; shield/unshield move them opaquely.
+ */
+export const shieldAsset = mutation({
+  args: {
+    symbol: v.string(),
+    units: v.number(),
+    commitment: v.string(),
+    sealedNote: v.object({
+      ephemeral: v.string(),
+      nonce: v.string(),
+      ciphertext: v.string(),
+    }),
+    proof: v.string(),
+  },
+  handler: async (ctx, { symbol, units, commitment, sealedNote, proof }) => {
+    const userId = await requireUserId(ctx);
+    const wallet = await getWalletForUserOrThrow(ctx, userId);
+    const state = await ensureProtocolState(ctx);
+    const asset = assetBySymbol(symbol);
+    if (!asset) throw new Error("Unknown asset symbol.");
+    if (!Number.isInteger(units) || units <= 0) {
+      throw new Error("Units must be a positive integer.");
+    }
+    const position = await ctx.db
+      .query("assetWallets")
+      .withIndex("by_wallet", (q) => q.eq("walletId", wallet._id))
+      .filter((q) => q.eq(q.field("symbol"), symbol))
+      .first();
+    if (!position || position.units < units) {
+      throw new Error(`Not enough transparent ${symbol} — use the asset faucet first.`);
+    }
+    if (sealedNote.ciphertext.length !== CIPHERTEXT_B64_LEN) {
+      throw new Error("Sealed note ciphertext must be 512 bytes.");
+    }
+    const statement = `shield:${wallet.address}:${symbol}:${units}:${commitment}`;
+    const expected = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
+    if (expected !== proof) {
+      throw new Error("Proof rejected: it does not commit to these bytes.");
+    }
+
+    const slot = Math.floor((Date.now() - state.genesisMs) / 400);
+    const signature = hexHashOf(
+      `shield:${wallet.address}:${Date.now()}:${Math.floor(Math.random() * 0xffffff)}`,
+    );
+    await ctx.db.patch(position._id, { units: position.units - units });
+    await ctx.db.insert("notes", {
+      commitment,
+      sealed: sealedNote,
+      slot,
+      createdAt: Date.now(),
+    });
+    await ctx.db.insert("assetEvents", {
+      kind: "shield",
+      symbol,
+      units,
+      commitment,
+      signature,
+      slot,
+      createdAt: Date.now(),
+    });
+    return { signature, slot };
+  },
+});
+
+/** The caller's transparent (unshielded) asset balances. */
+export const getMyAssets = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
+    const wallet = await getWalletForUser(ctx, userId);
+    if (!wallet) return [];
+    const positions = await ctx.db
+      .query("assetWallets")
+      .withIndex("by_wallet", (q) => q.eq("walletId", wallet._id))
+      .collect();
+    return positions.map((p) => ({ symbol: p.symbol, units: p.units }));
+  },
+});
+
+/**
+ * Unshield an asset note back to a transparent SPL balance. The exit is
+ * necessarily visible on the transparent side (like every reveal) — the
+ * ledger sees nullifiers and a credit, never the note history that funded
+ * it. In the full design the nullifier proof binds the asset_id.
+ */
+export const unshieldAsset = mutation({
+  args: {
+    symbol: v.string(),
+    units: v.number(),
+    nullifiers: v.array(v.string()),
+    proof: v.string(),
+  },
+  handler: async (ctx, { symbol, units, nullifiers, proof }) => {
+    const userId = await requireUserId(ctx);
+    const wallet = await getWalletForUserOrThrow(ctx, userId);
+    const state = await ensureProtocolState(ctx);
+    const asset = assetBySymbol(symbol);
+    if (!asset) throw new Error("Unknown asset symbol.");
+    if (!Number.isInteger(units) || units <= 0) {
+      throw new Error("Units must be a positive integer.");
+    }
+    for (const n of nullifiers) {
+      const existing = await ctx.db
+        .query("nullifiers")
+        .withIndex("by_value", (q) => q.eq("value", n))
+        .first();
+      if (existing)
+        throw new Error("Nullifier already seen — double spend blocked.");
+    }
+    const statement = `unshield:${wallet.address}:${symbol}:${units}:${nullifiers.join(",")}`;
+    const expected = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
+    if (expected !== proof) {
+      throw new Error("Proof rejected: it does not commit to these bytes.");
+    }
+
+    const slot = Math.floor((Date.now() - state.genesisMs) / 400);
+    const signature = hexHashOf(
+      `unshield:${wallet.address}:${Date.now()}:${Math.floor(Math.random() * 0xffffff)}`,
+    );
+    for (const n of nullifiers) {
+      await ctx.db.insert("nullifiers", { value: n, slot });
+    }
+    const position = await ctx.db
+      .query("assetWallets")
+      .withIndex("by_wallet", (q) => q.eq("walletId", wallet._id))
+      .filter((q) => q.eq(q.field("symbol"), symbol))
+      .first();
+    if (position) {
+      await ctx.db.patch(position._id, { units: position.units + units });
+    } else {
+      await ctx.db.insert("assetWallets", {
+        walletId: wallet._id,
+        symbol,
+        units,
+        createdAt: Date.now(),
+      });
+    }
+    await ctx.db.insert("assetEvents", {
+      kind: "unshield",
+      symbol,
+      units,
+      commitment: "",
+      signature,
+      slot,
+      createdAt: Date.now(),
+    });
+    return { signature, slot };
+  },
+});
+
+/** Public asset-flow feed — amounts visible only for shields (auditable in). */
+export const listAssetEvents = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
+    return ctx.db
+      .query("assetEvents")
+      .withIndex("by_created")
+      .order("desc")
+      .take(limit ?? 15);
+  },
+});
+
+/** Devnet mock SPL faucet. */
+export const assetFaucet = mutation({
+  args: { symbol: v.string() },
+  handler: async (ctx, { symbol }) => {
+    const userId = await requireUserId(ctx);
+    const wallet = await getWalletForUserOrThrow(ctx, userId);
+    const asset = assetBySymbol(symbol);
+    if (!asset) throw new Error("Unknown asset symbol.");
+    const position = await ctx.db
+      .query("assetWallets")
+      .withIndex("by_wallet", (q) => q.eq("walletId", wallet._id))
+      .filter((q) => q.eq(q.field("symbol"), symbol))
+      .first();
+    if (position) {
+      await ctx.db.patch(position._id, {
+        units: position.units + asset.faucetGrantUnits,
+      });
+    } else {
+      await ctx.db.insert("assetWallets", {
+        walletId: wallet._id,
+        symbol,
+        units: asset.faucetGrantUnits,
+        createdAt: Date.now(),
+      });
+    }
+    return { symbol, units: (position?.units ?? 0) + asset.faucetGrantUnits };  },
+});
 export const listMyInvoices = query({
   args: {},
   handler: async (ctx) => {

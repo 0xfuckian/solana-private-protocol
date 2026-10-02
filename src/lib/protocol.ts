@@ -325,3 +325,136 @@ export function payLinkUrl(p: PayLinkPayload): string {
   const origin = typeof window === "undefined" ? "" : window.location.origin;
   return `${origin}/pay#${encodePayLink(p)}`;
 }
+
+// ---------------------------------------------------------------------------
+// Private swap — constant-product AMM over protocol-owned reserves
+// ---------------------------------------------------------------------------
+
+/**
+ * The swap fee, taken in SOL on both legs. It routes exactly like every
+ * other protocol fee: half to the vault fee pool, half to the treasury.
+ */
+export const SWAP_FEE_BPS = 30; // 0.3%
+export const MIN_SWAP_LAMPORTS = 100_000; // 0.0001 SOL
+export const MIN_SWAP_TOKENS = 1_000;
+
+export interface SwapQuote {
+  outAmount: number;
+  feeLamports: number;
+  /** SOL per token before the trade. */
+  midPriceLamportsPerToken: number;
+  /** SOL per token actually received (after fee + slippage). */
+  effectivePriceLamportsPerToken: number;
+  priceImpactPct: number;
+}
+
+/** SOL → SOLZK quote against the current reserves (x·y = k). */
+export function quoteSwapSolForTokens(
+  solLamportsIn: number,
+  solReserve: number,
+  tokenReserve: number,
+): SwapQuote | null {
+  if (solLamportsIn <= 0 || solReserve <= 0 || tokenReserve <= 0) return null;
+  const feeLamports = Math.ceil((solLamportsIn * SWAP_FEE_BPS) / 10_000);
+  const netIn = solLamportsIn - feeLamports;
+  const k = solReserve * tokenReserve;
+  const newTokens = Math.floor(k / (solReserve + netIn));
+  const tokensOut = tokenReserve - newTokens;
+  if (tokensOut <= 0) return null;
+  const mid = solReserve / tokenReserve;
+  const eff = solLamportsIn / tokensOut;
+  return {
+    outAmount: tokensOut,
+    feeLamports,
+    midPriceLamportsPerToken: mid,
+    effectivePriceLamportsPerToken: eff,
+    priceImpactPct: Math.max(0, (eff / mid - 1) * 100),
+  };
+}
+
+/** SOLZK → SOL quote against the current reserves. */
+export function quoteSwapTokensForSol(
+  tokensIn: number,
+  solReserve: number,
+  tokenReserve: number,
+): SwapQuote | null {
+  if (tokensIn <= 0 || solReserve <= 0 || tokenReserve <= 0) return null;
+  const k = solReserve * tokenReserve;
+  const newSol = Math.floor(k / (tokenReserve + tokensIn));
+  const grossSolOut = solReserve - newSol;
+  if (grossSolOut <= 0) return null;
+  const feeLamports = Math.ceil((grossSolOut * SWAP_FEE_BPS) / 10_000);
+  const lamportsOut = grossSolOut - feeLamports;
+  if (lamportsOut <= 0) return null;
+  const mid = solReserve / tokenReserve;
+  const eff = lamportsOut / tokensIn;
+  return {
+    outAmount: lamportsOut,
+    feeLamports,
+    midPriceLamportsPerToken: mid,
+    effectivePriceLamportsPerToken: eff,
+    priceImpactPct: Math.max(0, (1 - eff / mid) * 100),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Multi-asset shield — wrap any SPL asset into the sealed-note format
+// ---------------------------------------------------------------------------
+
+export interface ShieldedAsset {
+  symbol: string;
+  name: string;
+  /** Devnet mock mint address. */
+  mint: string;
+  decimals: number;
+  /** Mock devnet price: lamports per raw unit, for fee math and display. */
+  lamportsPerUnit: number;
+  /** Units the devnet faucet adds per top-up. */
+  faucetGrantUnits: number;
+}
+
+export const SHIELDED_ASSETS: ShieldedAsset[] = [
+  {
+    symbol: "USDC",
+    name: "USD Coin",
+    mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    decimals: 6,
+    lamportsPerUnit: 1,
+    faucetGrantUnits: 250_000_000,
+  },
+  {
+    symbol: "BONK",
+    name: "Bonk",
+    mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+    decimals: 3,
+    lamportsPerUnit: 1,
+    faucetGrantUnits: 5_000_000_000,
+  },
+  {
+    symbol: "JUP",
+    name: "Jupiter",
+    mint: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+    decimals: 6,
+    lamportsPerUnit: 40,
+    faucetGrantUnits: 20_000_000,
+  },
+];
+
+export function assetBySymbol(symbol: string): ShieldedAsset | null {
+  return SHIELDED_ASSETS.find((a) => a.symbol === symbol) ?? null;
+}
+
+/** SOL-equivalent value of an asset amount (mock devnet pricing). */
+export function assetLamportsValue(symbol: string, units: number): number {
+  const asset = assetBySymbol(symbol);
+  if (!asset) return 0;
+  return Math.floor(units * asset.lamportsPerUnit);
+}
+
+/** Human format: raw units → decimal units with the symbol. */
+export function formatAssetUnits(symbol: string, units: number): string {
+  const asset = assetBySymbol(symbol);
+  const decimals = asset?.decimals ?? 0;
+  const value = units / 10 ** decimals;
+  return `${value.toLocaleString("en-US", { maximumFractionDigits: decimals })} ${symbol}`;
+}

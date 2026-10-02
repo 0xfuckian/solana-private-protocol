@@ -11,6 +11,8 @@ import {
   discountTierForBurned,
   formatTokenAmount,
   hashFromHex,
+  quoteSwapSolForTokens,
+  quoteSwapTokensForSol,
   transferFeeTokens,
 } from "./protocol";
 import {
@@ -29,10 +31,13 @@ import {
   outgoingViewKeyFromSeedHex,
   saveWalletBlob,
   sealNoteFor,
+  sealNoteForStealth,
   seedHexFromWords,
   setLinkedWalletId,
   spendKeyFromSeedHex,
+  stealthMetaFromSeedHex,
   tryUnsealNote,
+  tryUnsealStealthNote,
   validateSeedWords,
   type SealedNote,
 } from "./wallet";
@@ -105,11 +110,15 @@ export interface MyNote {
   memo: string;
   /** This note's 1-byte view tag matched ours — decrypted first in the scan. */
   tagHit?: boolean;
+  /** Received through a stealth (one-time) address. */
+  stealth?: boolean;
 }
 
 export interface ViewKeys {
   incoming: string | null;
   outgoing: string | null;
+  /** Stealth meta secret — publish this instead of a payment address. */
+  stealthMeta: string | null;
 }
 
 export function useSolzk() {
@@ -124,21 +133,33 @@ export function useSolzk() {
   const [viewKeys, setViewKeys] = useState<ViewKeys>({
     incoming: null,
     outgoing: null,
+    stealthMeta: null,
   });
   const [tagMatches, setTagMatches] = useState(0);
   const seedWordsRef = useRef<string[] | null>(null);
   const spendKeyRef = useRef<string | null>(null);
+  const stealthRef = useRef<string | null>(null);
 
   const authUser = useQuery(api.users.currentUser);
   const serverWallet = useQuery(api.protocol.getMyWallet, authUser ? {} : "skip");
   const protocol = useQuery(api.protocol.getState);
   const vaultPool = useQuery(api.vault.getPool);
+  const swapPool = useQuery(api.swap.getPool);
 
   const registerWalletMut = useMutation(api.protocol.registerWallet);
   const faucetMut = useMutation(api.protocol.faucet);
   const sendPrivateMut = useMutation(api.protocol.sendPrivate);
   const burnForTierMut = useMutation(api.protocol.burnForTier);
   const redeemMut = useMutation(api.protocol.redeem);
+  const claimFeeShareMut = useMutation(api.protocol.claimFeeShare);
+  const checkpointAnchorMut = useMutation(api.protocol.checkpointAnchor);
+  const seedClaimsPoolMut = useMutation(api.protocol.seedClaimsPool);
+  const seedSwapPoolMut = useMutation(api.protocol.seedSwapPool);
+  const shieldAssetMut = useMutation(api.protocol.shieldAsset);
+  const unshieldAssetMut = useMutation(api.protocol.unshieldAsset);
+  const assetFaucetMut = useMutation(api.protocol.assetFaucet);
+  const swapSolForTokensMut = useMutation(api.swap.swapSolForTokens);
+  const swapTokensForSolMut = useMutation(api.swap.swapTokensForSol);
   const depositMut = useMutation(api.vault.deposit);
   const claimFeesMut = useMutation(api.vault.claimFees);
   const withdrawMut = useMutation(api.vault.withdraw);
@@ -150,15 +171,17 @@ export function useSolzk() {
   }, []);
 
   const deriveKeys = useCallback(async (sh: string) => {
-    const [addr, spend, ivk, ovk] = await Promise.all([
+    const [addr, spend, ivk, ovk, stealthMeta] = await Promise.all([
       addressFromSeedHex(sh),
       spendKeyFromSeedHex(sh),
       incomingViewKeyFromSeedHex(sh),
       outgoingViewKeyFromSeedHex(sh),
+      stealthMetaFromSeedHex(sh),
     ]);
     setAddress(addr);
     spendKeyRef.current = spend;
-    setViewKeys({ incoming: ivk, outgoing: ovk });
+    stealthRef.current = stealthMeta;
+    setViewKeys({ incoming: ivk, outgoing: ovk, stealthMeta });
   }, []);
 
   /** Unlock with password: decrypt the local seed, derive keys, link. */
@@ -231,7 +254,7 @@ export function useSolzk() {
     seedWordsRef.current = null;
     setBalance(0);
     setNotes([]);
-    setViewKeys({ incoming: null, outgoing: null });
+    setViewKeys({ incoming: null, outgoing: null, stealthMeta: null });
     setTagMatches(0);
     setPhase(loadWalletBlob() ? "locked" : "none");
   }, []);
@@ -242,7 +265,7 @@ export function useSolzk() {
     spendKeyRef.current = null;
     setSeedHex(null);
     setAddress(null);
-    setViewKeys({ incoming: null, outgoing: null });
+    setViewKeys({ incoming: null, outgoing: null, stealthMeta: null });
     setTagMatches(0);
     setPhase("none");
   }, []);
@@ -272,7 +295,14 @@ export function useSolzk() {
             ? await ephemeralMatchesTag(address, n.sealed.ephemeral)
             : false;
         if (tagHit) tags++;
-        const opened = await tryUnsealNote(address, n.sealed);
+        let opened = await tryUnsealNote(address, n.sealed);
+        let viaStealth = false;
+        if (!opened && stealthRef.current) {
+          // Stealth second pass: re-derive the one-time address from (my
+          // meta secret, the note's published nonce) and trial-decrypt.
+          opened = await tryUnsealStealthNote(stealthRef.current, n.sealed);
+          viaStealth = opened !== null;
+        }
         if (opened) {
           const nullifier = await nullifierFor(
             n.commitment,
@@ -286,7 +316,8 @@ export function useSolzk() {
               slot: n.slot,
               value: opened.value,
               memo: opened.memo,
-              tagHit,
+              tagHit: viaStealth ? false : tagHit,
+              stealth: viaStealth,
             });
           }
         }
@@ -487,6 +518,69 @@ export function useSolzk() {
   );
 
   /**
+   * Send to a stealth address: derive a fresh one-time address from the
+   * recipient's published meta secret, seal to it. The envelope carries no
+   * stable identifier — the receiver recognizes it in their stealth scan.
+   */
+  const sendStealth = useCallback(
+    async (
+      stealthMeta: string,
+      amount: number,
+      memo: string,
+      opts?: { feeInNote?: boolean },
+    ) => {
+      if (!address || !spendKeyRef.current) throw new Error("Wallet locked");
+      if (balance < amount) throw new Error("Insufficient shielded balance");
+
+      const discount = discountTierForBurned(serverWallet?.burnedTokens ?? 0);
+      const fee = transferFeeTokens(amount, discount.discountBps);
+      const relayerFee = opts?.feeInNote ? RELAYER_FEE_NOTE_TOKENS : 0;
+      const net = amount - fee - relayerFee;
+      if (net <= 0) {
+        throw new Error(
+          `Amount too small — fees are ${formatTokenAmount(fee)}${relayerFee ? ` + ${formatTokenAmount(relayerFee)}` : ""} ${TICKER}.`,
+        );
+      }
+
+      const { nullifiers, acc } = await buildSpend(amount);
+      const { sealed: receiverNote, stealthAddress } = await sealNoteForStealth(
+        stealthMeta,
+        { value: net, memo, r: crypto.randomUUID() },
+      );
+      const receiverCommitment = await commitmentFor(
+        net,
+        "",
+        stealthAddress,
+      );
+      const change = acc - amount;
+      const changeNote =
+        change > 0
+          ? await sealNoteFor(address, { value: change, memo: "change", r: "change" })
+          : null;
+      const changeCommitment = changeNote
+        ? await commitmentFor(change, "change", address)
+        : "";
+
+      const statement = `${nullifiers.join(",")}|${stealthAddress}|${amount}|${receiverCommitment}|${JSON.stringify(receiverNote)}`;
+      const { proof } = await buildProof(statement);
+
+      return sendPrivateMut({
+        nullifiers,
+        receiver: stealthAddress,
+        amount,
+        receiverCommitment,
+        sealedNote: receiverNote,
+        changeNote:
+          changeNote ?? { ephemeral: "none", nonce: "none", ciphertext: "none" },
+        changeCommitment,
+        proof,
+        feeInNote: opts?.feeInNote === true,
+      });
+    },
+    [address, balance, buildSpend, sendPrivateMut, serverWallet],
+  );
+
+  /**
    * Read-only scan: trial-decrypt the whole pool with someone else's
    * address (their incoming view key, in this devnet build). Returns what
    * they hold — values and memos — without any spend authority.
@@ -567,6 +661,182 @@ export function useSolzk() {
     [address, vaultPool, withdrawMut, refreshNotes],
   );
 
+  /** Devnet simulation hooks: size the claims pool, seed the swap AMM. */
+  const seedClaimsPool = useCallback(async () => {
+    const r = await seedClaimsPoolMut({});
+    refreshNotes();
+    return r as { seeded: boolean; tokens?: number };
+  }, [seedClaimsPoolMut, refreshNotes]);
+
+  const seedSwapPool = useCallback(async () => {
+    const r = await seedSwapPoolMut({});
+    return r as { seeded: boolean };
+  }, [seedSwapPoolMut]);
+
+  /** Advance the public fee anchor (anyone can checkpoint). */
+  const checkpointAnchor = useCallback(async () => {
+    return (await checkpointAnchorMut({})) as { slot: number; root: string };
+  }, [checkpointAnchorMut]);
+
+  /**
+   * ZK fee-share claim: prove a note of `tokens` existed at the anchor and
+   * take the pro-rata payout from the claims pool in SOL.
+   */
+  const claimFeeShare = useCallback(
+    async (tokens: number, anchorSlot: number, anchorRoot: string) => {
+      if (!address) throw new Error("Wallet locked");
+      // The witness is the largest note we hold — the commitment must be a
+      // real note in the pool at (or before) the anchor slot.
+      const biggest = [...notes].sort((a, b) => b.value - a.value)[0];
+      if (!biggest || biggest.value < tokens) {
+        throw new Error("No single note covers that claim size.");
+      }
+      const statement = `feeshare:${anchorSlot}:${anchorRoot}:${biggest.commitment}:${tokens}`;
+      const { proof } = await buildProof(statement);
+      const res = await claimFeeShareMut({
+        anchorSlot,
+        anchorRoot,
+        holderCommitment: biggest.commitment,
+        tokens,
+        proof,
+      });
+      return res as { paidLamports: number; signature: string; slot: number };
+    },
+    [address, notes, claimFeeShareMut],
+  );
+
+  /** Shield a transparent asset balance into a sealed note. */
+  const shieldAsset = useCallback(
+    async (symbol: string, units: number) => {
+      if (!address) throw new Error("Wallet locked");
+      const r = crypto.randomUUID();
+      const sealed = await sealNoteFor(address, {
+        value: units,
+        memo: `asset:${symbol}`,
+        r,
+      });
+      const commitment = await commitmentFor(units, r, address);
+      const statement = `shield:${address}:${symbol}:${units}:${commitment}`;
+      const { proof } = await buildProof(statement);
+      await shieldAssetMut({ symbol, units, commitment, sealedNote: sealed, proof });
+      refreshNotes();
+    },
+    [address, shieldAssetMut, refreshNotes],
+  );
+
+  /** Unshield an asset note back to a transparent balance. */
+  const unshieldAsset = useCallback(
+    async (symbol: string, units: number) => {
+      if (!address || !spendKeyRef.current) throw new Error("Wallet locked");
+      // Find the asset note covering the units.
+      const note = notes.find(
+        (n) => n.memo === `asset:${symbol}` && n.value >= units,
+      );
+      if (!note) {
+        throw new Error(`No sealed ${symbol} note covers that amount — shield first.`);
+      }
+      const nullifier = await nullifierFor(note.commitment, spendKeyRef.current);
+      const statement = `unshield:${address}:${symbol}:${units}:${nullifier}`;
+      const { proof } = await buildProof(statement);
+      await unshieldAssetMut({ symbol, units, nullifiers: [nullifier], proof });
+      refreshNotes();
+    },
+    [address, notes, spendKeyRef, unshieldAssetMut, refreshNotes],
+  );
+
+  /** Devnet mock SPL faucet. */
+  const assetFaucet = useCallback(
+    async (symbol: string) => {
+      await assetFaucetMut({ symbol });
+    },
+    [assetFaucetMut],
+  );
+
+  /** Quote a private swap SOL → SOLZK against current reserves. */
+  const quoteSwapSol = useCallback(
+    (solLamportsIn: number) => {
+      if (!swapPool || !swapPool.open) return null;
+      return quoteSwapSolForTokens(
+        solLamportsIn,
+        swapPool.solReserve,
+        swapPool.tokenReserve,
+      );
+    },
+    [swapPool],
+  );
+
+  /** Quote a private swap SOLZK → SOL against current reserves. */
+  const quoteSwapTokens = useCallback(
+    (tokensIn: number) => {
+      if (!swapPool || !swapPool.open) return null;
+      return quoteSwapTokensForSol(
+        tokensIn,
+        swapPool.solReserve,
+        swapPool.tokenReserve,
+      );
+    },
+    [swapPool],
+  );
+
+  /**
+   * Execute a private swap. SOL → SOLZK seals the output as a note only
+   * you can open; SOLZK → SOL spends notes by nullifier for a SOL payout.
+   */
+  const swap = useCallback(
+    async (
+      direction: "sol_to_tokens" | "tokens_to_sol",
+      amount: number,
+      minOut: number,
+    ) => {
+      if (!address) throw new Error("Wallet locked");
+      if (direction === "sol_to_tokens") {
+        const lamportsIn = Math.round(amount);
+        // Quote locally with the same public math the node runs, then seal
+        // the output note for exactly the quoted amount. minOut is exact:
+        // if reserves moved concurrently the node rejects and we retry.
+        const quote = quoteSwapSol(lamportsIn);
+        if (!quote) throw new Error("Swap pool unavailable — seed it first.");
+        const r = crypto.randomUUID();
+        const sealed = await sealNoteFor(address, {
+          value: quote.outAmount,
+          memo: "swap",
+          r,
+        });
+        const commitment = await commitmentFor(quote.outAmount, r, address);
+        const statement = `swap-sol:${address}:${lamportsIn}:${commitment}:${JSON.stringify(sealed)}`;
+        const { proof } = await buildProof(statement);
+        return swapSolForTokensMut({
+          solLamportsIn: lamportsIn,
+          minTokensOut: Math.min(minOut, quote.outAmount),
+          sealedNote: sealed,
+          commitment,
+          proof,
+        }) as Promise<{
+          tokensOut: number;
+          feeLamports: number;
+          signature: string;
+          slot: number;
+        }>;
+      }
+      const tokensIn = Math.round(amount);
+      const { nullifiers } = await buildSpend(tokensIn);
+      const statement = `swap-tokens:${address}:${tokensIn}:${nullifiers.join(",")}`;
+      const { proof } = await buildProof(statement);
+      return swapTokensForSolMut({
+        tokensIn,
+        minLamportsOut: minOut,
+        nullifiers,
+        proof,
+      }) as Promise<{
+        lamportsOut: number;
+        feeLamports: number;
+        signature: string;
+        slot: number;
+      }>;
+    },
+    [address, buildSpend, quoteSwapSol, swapSolForTokensMut, swapTokensForSolMut],
+  );
+
   const progressToSellout = useMemo(() => {
     if (!protocol) return 0;
     return Math.min(1, protocol.mintedTokens / TOTAL_SUPPLY);
@@ -602,6 +872,22 @@ export function useSolzk() {
     withdrawFromVault,
     buildSpend,
     scanAddress,
+    // stealth
+    sendStealth,
+    // swaps
+    swapPool,
+    quoteSwapSol,
+    quoteSwapTokens,
+    swap,
+    seedSwapPool,
+    // multi-asset shield
+    shieldAsset,
+    unshieldAsset,
+    assetFaucet,
+    // zk fee-share claims
+    checkpointAnchor,
+    claimFeeShare,
+    seedClaimsPool,
     // shielded state
     balance,
     notes,

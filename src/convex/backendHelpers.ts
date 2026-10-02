@@ -82,6 +82,10 @@ export type ProtocolStateLike = {
   burnedTokens?: number;
   relayerFeesTokens?: number;
   lastBuybackAt?: number;
+  swapSolReserve?: number;
+  swapTokenReserve?: number;
+  claimsPoolTokens?: number;
+  lastAnchorAt?: number;
 };
 
 /** Cumulative burned supply (keeper buybacks + tier burns + exits). */

@@ -57,10 +57,17 @@ const schema = defineSchema(
       // Cumulative supply burned: keeper buybacks of treasury fees, user
       // tier burns, and exit redemptions. Effective supply = total − burned.
       burnedTokens: v.optional(v.number()),
-      // Public relayer fee vault: flat in-note fees collected from
-      // fee-in-note transfers (the note pays the relayer, not the sender).
+      // Public relayer fee vault: flat in-note fees from fee-in-note
+      // transfers (the note pays the relayer, not the sender).
       relayerFeesTokens: v.optional(v.number()),
       lastBuybackAt: v.optional(v.number()),
+      // Private swap reserves (x·y = k): SOL on one side, SOLZK on the other.
+      swapSolReserve: v.optional(v.number()),
+      swapTokenReserve: v.optional(v.number()),
+      // ZK fee-share claims: global fee anchor checkpoint (monotonic).
+      lastAnchorAt: v.optional(v.number()),
+      totalFeePoolCheckpoint: v.optional(v.number()),
+      claimsPoolTokens: v.optional(v.number()),
     }).index("by_key", ["key"]),
 
     // One shielded wallet per app account. The address is the public shielded
@@ -238,6 +245,62 @@ const schema = defineSchema(
     })
       .index("by_address", ["address"])
       .index("by_label", ["label"]),
+
+    // Transparent (unshielded) devnet mock SPL balances, per wallet.
+    assetWallets: defineTable({
+      walletId: v.id("wallets"),
+      symbol: v.string(),
+      units: v.number(),
+      createdAt: v.number(),
+    }).index("by_wallet", ["walletId"]),
+
+    // ZK fee-share claims: a wallet proves it held value at a past anchor
+    // (the join-split statement signed into the claim's nullifier) without
+    // revealing balance or identity. Payouts come from the claims pool.
+    feeClaims: defineTable({
+      walletId: v.id("wallets"),
+      anchorSlot: v.number(),
+      anchorRoot: v.string(),
+      holderCommitment: v.string(),
+      claimNullifier: v.string(),
+      tokens: v.number(), // claim size: value held at the anchor
+      paidLamports: v.number(),
+      signature: v.string(),
+      createdAt: v.number(),
+    })
+      .index("by_nullifier", ["claimNullifier"])
+      .index("by_holder", ["holderCommitment"])
+      .index("by_created", ["createdAt"]),
+
+    // Private swap ledger: reserves live on protocolState, this is the
+    // public record — every swap burns a nullifier and seals output notes.
+    swapEvents: defineTable({
+      direction: v.string(), // "sol_to_tokens" | "tokens_to_sol"
+      solLamportsIn: v.number(),
+      solLamportsOut: v.number(),
+      tokensIn: v.number(),
+      tokensOut: v.number(),
+      feeLamports: v.number(),
+      solReserve: v.number(), // reserves after the swap
+      tokenReserve: v.number(),
+      signature: v.string(),
+      slot: v.number(),
+      createdAt: v.number(),
+    }).index("by_created", ["createdAt"]),
+
+    // Multi-asset shield events: opaque asset flows — a shield, an unshield,
+    // or a private transfer of an asset note. Amounts stay hidden.
+    assetEvents: defineTable({
+      kind: v.string(), // "shield" | "unshield" | "transfer"
+      symbol: v.string(),
+      units: v.number(), // public only for shield (deposits are auditable)
+      commitment: v.string(),
+      signature: v.string(),
+      slot: v.number(),
+      createdAt: v.number(),
+    })
+      .index("by_created", ["createdAt"])
+      .index("by_symbol", ["symbol"]),
   },
   {
     schemaValidation: false,
