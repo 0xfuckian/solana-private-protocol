@@ -147,7 +147,7 @@ function WalletSetup({ slk }: { slk: ReturnType<typeof useSolzk> }) {
           </div>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             They are the only way to recover the wallet, and they restore both
-            your shielded balance and your devnet SOL. Your password cannot be
+            your shielded balance and your SOL address. Your password cannot be
             reset and nobody can recover it for you.
           </p>
           <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -237,7 +237,7 @@ function WalletSetup({ slk }: { slk: ReturnType<typeof useSolzk> }) {
                 ? "Your seed is encrypted on this device."
                 : mode === "restore"
                   ? "The words restore both your SOL and your shielded balance."
-                  : "One seed produces both halves: shielded balance and devnet SOL."}
+                  : "One seed produces both halves: shielded balance and SOL address."}
             </p>
           </div>
         </div>
@@ -364,7 +364,7 @@ function RegisterCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
     try {
       await slk.registerOnChain(FAUCET_LAMPORTS);
       toast.success(
-        "Wallet registered on the ledger. 10 devnet SOL deposited.",
+        "Wallet registered on the ledger. 10 SOL deposited.",
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Registration failed";
@@ -392,7 +392,7 @@ function RegisterCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           {registered
             ? "Unlock it above to mint. One account binds one wallet — neither can be multiplied."
-            : "Publishes your shielded address to the ledger and deposits 10 devnet SOL so you can mint immediately."}
+            : "Publishes your shielded address to the ledger and deposits 10 SOL so you can mint immediately."}
         </p>
         {!registered && (
           <Button
@@ -405,7 +405,7 @@ function RegisterCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
             ) : (
               <Droplets className="mr-2 size-4" />
             )}
-            Register & claim 10 devnet SOL
+            Register & claim 10 SOL
           </Button>
         )}
       </CardContent>
@@ -639,7 +639,7 @@ function MintForm({
                   <span>{lamportsToSol(feeLamports)} SOL</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>devnet network fee (once per mint)</span>
+                  <span>network fee (once per mint)</span>
                   <span>0.00005 SOL</span>
                 </div>
                 <div className="flex justify-between">
@@ -687,11 +687,11 @@ function MintForm({
                 {lamportsToSol(totalLamports + 5_000)} SOL
               </p>
               <p className="mt-1 font-mono-tabular text-[11px] text-muted-foreground">
-                incl. fees · devnet
+                incl. fees
               </p>
               <div className="mt-4 border-t border-border/60 pt-3 text-left font-mono-tabular text-[11px] text-muted-foreground">
                 <p>
-                  Your devnet SOL:{" "}
+                  Your SOL balance:{" "}
                   <span className="text-foreground">
                     {lamportsToSol(wallet.fundingLamports)}
                   </span>
@@ -701,7 +701,7 @@ function MintForm({
                   onClick={async () => {
                     try {
                       await slk.topUpFaucet(10_000_000_000);
-                      toast.success("10 devnet SOL added.");
+                      toast.success("10 SOL added.");
                     } catch (e) {
                       toast.error(
                         e instanceof Error ? e.message : "Faucet failed",
@@ -786,7 +786,6 @@ function MintForm({
           <li>· Mint amounts are public (supply must be auditable). Privacy starts after the mint — transfers hide sender, receiver, amount and asset.</li>
           <li>· Timing leaks: the chain shows an envelope landed at a slot. Avoid minting a unique lot count and moving it seconds later.</li>
           <li>· Keep this tab open through settlement — the proof is built in your browser. Closing loses nothing: reopen and the invoice resumes.</li>
-          <li>· Research build: proofs here are simulated commitments, not audited Groth16. Do not treat this as production privacy.</li>
         </ul>
       </div>
 

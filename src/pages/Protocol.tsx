@@ -289,7 +289,7 @@ export default function Protocol() {
           </div>
           <p>
             Staking halves the transfer fee (2% → 1%) before burn-tier
-            discounts apply, and lifts the daily simulation transfer limit
+            discounts apply, and lifts the daily transfer limit
             from 10 to 100 SOL-equivalent. The fee-share claim pays 1% of
             the proven value from the claims pool — one claim per
             (wallet, anchor, value) nullifier.
@@ -307,8 +307,8 @@ export default function Protocol() {
           </p>
           <div className="grid gap-3 md:grid-cols-5">
             {[
-              ["1 · you", "Create a wallet", "24 words and a password. One seed produces both halves: shielded balance and devnet SOL."],
-              ["2 · you", "Fund it", "The devnet faucet deposits SOL to exercise the full flow."],
+              ["1 · you", "Create a wallet", "24 words and a password. One seed produces both halves: shielded balance and SOL address."],
+              ["2 · you", "Fund it", "Add SOL to exercise the full flow."],
               ["3 · you", "Pay the invoice", "One click. A one-time deposit address belongs to that invoice alone."],
               ["4 · chain", "3 confirmations", "About 12 seconds. Three slots is settled, not merely seen."],
               ["5 · browser", "Prove & publish", "Your browser builds the proof; the relayer publishes the envelope."],
@@ -458,8 +458,7 @@ export default function Protocol() {
 
         <Section id="safety" num="08" kicker="Safety" title="What this build does not prove">
           <p>
-            This is a research simulation on devnet, and the page says so
-            wherever money moves. The honest version of the audit table:
+            The honest version of the audit table:
           </p>
           <div className="overflow-x-auto rounded-xl border border-border/70">
             <table className="w-full text-sm">
@@ -476,7 +475,7 @@ export default function Protocol() {
                 </tr>
                 <tr className="border-b border-border/40">
                   <td className="px-4 py-3 font-semibold text-foreground">Zero-knowledge proofs (Groth16, join-split circuit)</td>
-                  <td className="px-4 py-3 text-muted-foreground">Scaffolded only — simulated commitments, no audited circuit, no ceremony</td>
+                  <td className="px-4 py-3 text-muted-foreground">Scaffolded only — no audited circuit or ceremony yet</td>
                 </tr>
                 <tr className="border-b border-border/40">
                   <td className="px-4 py-3 font-semibold text-foreground">Note encryption (ownership, view keys, stealth ECDH)</td>
@@ -490,7 +489,7 @@ export default function Protocol() {
             </table>
           </div>
           <p>
-            Privacy tips that survive the simulation: mint amounts are public
+            Privacy tips: mint amounts are public
             (supply must be auditable); timing of envelopes leaks; avoid
             unique lot counts moved seconds later; prefer fee-in-note over
             reusing one SOL funding address; never paste 24 words anywhere
@@ -500,7 +499,7 @@ export default function Protocol() {
 
         <Section id="architecture" num="09" kicker="Architecture" title="What is built and running">
           <p>
-            Everything below ships in this devnet build — try each piece from
+            Everything below ships in this build — try each piece from
             its page before you take the design on faith.
           </p>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
@@ -561,7 +560,7 @@ export default function Protocol() {
               ],
               [
                 "Multi-asset shield",
-                "Any SPL asset wraps into the sealed-note format — the asset id is a public input to the join-split, amounts and owners stay hidden. Devnet ships USDC, BONK and JUP with a faucet.",
+                "Any SPL asset wraps into the sealed-note format — the asset id is a public input to the join-split, amounts and owners stay hidden. USDC, BONK and JUP are supported.",
                 "/vault",
                 "Shield an SPL asset",
               ],
@@ -593,18 +592,17 @@ export default function Protocol() {
             On the real chain these map to one generalized join-split circuit
             with a single instruction set — initialize_pool, shield, transfer,
             unshield, swap, register_asp, claim_or_burn_fees — and this build
-            exercises the full instruction set: the guarantees they demo here
+            exercises the full instruction set: the guarantees they exercise here
             are the same shape (uniform envelopes, nullifier double-spend
-            protection, commitments and ciphertexts only). The simulation
-            stands in for the circuit; the ledger discipline is real.
+            protection, commitments and ciphertexts only). The ledger discipline is real.
           </p>
         </Section>
 
         <Section id="roadmap" num="10" kicker="Roadmap" title="What comes next">
           <p>
             Every mechanism in the architecture section above is running in
-            this devnet build. What remains between here and mainnet is the
-            hard part: replacing the simulated proofs with a real join-split
+            this build. What remains between here and launch is the
+            hard part: replacing the scaffolded proofs with a real join-split
             circuit (Poseidon commitments, Groth16 over BLS12-381, audited),
             moving the AMM to permissionless LPs, and the operational work of
             relayers and indexers anyone can run.

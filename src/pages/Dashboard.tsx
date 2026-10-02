@@ -66,7 +66,7 @@ function UnlockGate({ slk }: { slk: ReturnType<typeof useSolzk> }) {
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             Create your shielded wallet on the mint page — it takes about a
             minute and produces both halves: your shielded balance and your
-            devnet SOL.
+            SOL address.
           </p>
           <Button asChild className="mt-6 bg-sol-gradient font-semibold text-[#04101a] hover:opacity-90">
             <Link to="/mint">
@@ -722,7 +722,7 @@ function DashboardInner() {
           <h2 className="text-lg font-semibold">Register on the ledger</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             Your wallet exists on this device but has not been registered.
-            Open the mint page to register it and claim devnet SOL.
+            Open the mint page to register it and fund your SOL balance.
           </p>
           <Button asChild className="mt-6">
             <Link to="/mint">Go to the mint</Link>
@@ -742,7 +742,7 @@ function DashboardInner() {
           sub={slk.scanning ? "Scanning the pool…" : "Computed in your browser"}
         />
         <Stat
-          label="Devnet SOL"
+          label="SOL balance"
           value={`${lamportsToSol(wallet.fundingLamports)} SOL`}
           sub={
             <button
@@ -750,7 +750,7 @@ function DashboardInner() {
               onClick={async () => {
                 try {
                   await topUp({ lamports: 10_000_000_000 });
-                  toast.success("10 devnet SOL added.");
+                  toast.success("10 SOL added.");
                 } catch (e) {
                   toast.error(e instanceof Error ? e.message : "Faucet failed");
                 }
@@ -981,7 +981,7 @@ export default function Dashboard() {
           <div className="mb-8">
             <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Your research wallet, notes, staking locks and demo transaction history.
+              Your wallet, notes, staking locks and transaction history.
             </p>
           </div>
           <DashboardInner />

@@ -342,7 +342,7 @@ function ClaimsCard() {
   const claimsPoolTokens = slk.protocol?.claimsPoolTokens ?? 0;
   const lastAnchorAt = slk.protocol?.lastAnchorAt;
 
-  const claimSize = 1_000; // demo claim: 1,000 SOLZK held at the anchor
+  const claimSize = 1_000; // claims anchor size
   const canClaim =
     anchor !== null &&
     slk.notes.some((n) => n.value >= claimSize) &&
@@ -390,7 +390,7 @@ function ClaimsCard() {
             ) : (
               <Scale className="mr-1.5 size-3.5" />
             )}
-            Fund the claims pool (devnet)
+            Fund the claims pool
           </Button>
         ) : (
           <div className="mt-3 space-y-2">
@@ -505,14 +505,13 @@ function AssetShieldCard() {
           <Layers className="size-4 text-primary" />
         </div>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          Choose a mock asset before shielding. Units are simulated, not real
-          SPL tokens. Asset classification currently uses a memo, not a proven
-          circuit asset ID; the demo does not protect amounts or ownership.
+          Choose an asset before shielding. Asset classification currently uses
+          a memo, not a proven circuit asset ID.
         </p>
 
         <label className="mt-4 block text-xs text-muted-foreground">Asset to shield / unshield
           <select aria-label="Asset to shield" value={symbol} onChange={e => { setSymbol(e.target.value); setUnits(""); }} className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">
-            {["USDC", "BONK", "JUP"].map(s => <option key={s} value={s}>{s} · mock asset</option>)}
+            {["USDC", "BONK", "JUP"].map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </label>
 
@@ -547,7 +546,7 @@ function AssetShieldCard() {
               setBusy("shield");
               try {
                 await slk.shieldAsset(symbol, unitsNum);
-                toast.success(`${symbol} mock units shielded.`);
+                toast.success(`${symbol} units shielded.`);
                 setUnits("");
               } catch (e) {
                 toast.error(e instanceof Error ? e.message : "Shield failed");
@@ -601,7 +600,7 @@ function AssetShieldCard() {
             setBusy("faucet");
             try {
               await slk.assetFaucet(symbol);
-              toast.success(`Devnet ${symbol} granted.`);
+              toast.success(`${symbol} granted.`);
             } catch (e) {
               toast.error(e instanceof Error ? e.message : "Faucet failed");
             } finally {

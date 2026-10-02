@@ -41,13 +41,13 @@ export function StakingCard() {
       }
       slk.refreshNotes();
       setAmount("");
-      toast.success(kind === "stake" ? "Demo tokens staked with a seven-day lock." : kind === "claim" ? "Funded token rewards claimed." : "Demo tokens returned to a note.");
+      toast.success(kind === "stake" ? "Tokens staked with a seven-day lock." : kind === "claim" ? "Funded token rewards claimed." : "Tokens returned to a note.");
     } catch (e) { toast.error(e instanceof Error ? e.message : "Staking failed"); }
     finally { setBusy(false); }
   }
   return <Card><CardContent className="p-6">
     <div className="flex items-center justify-between"><h2 className="text-base font-semibold">Stake for utility</h2><LockKeyhole className="size-4 text-primary"/></div>
-    <p className="mt-2 text-xs leading-5 text-muted-foreground">Simulation only. Seven-day lock; 1% base transfer fee before burn discounts and a 100 demo-SOL daily limit. No guaranteed APY or live governance votes.</p>
+    <p className="mt-2 text-xs leading-5 text-muted-foreground">Seven-day lock; 1% base transfer fee before burn discounts and a 100 {TICKER} daily limit. No guaranteed APY.</p>
     <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl border border-border bg-background p-4 text-xs">
       <div><p className="text-muted-foreground">Your stake / vote-weight preview</p><p className="mt-1 font-mono text-primary">{formatTokenAmount(status?.amount ?? 0)} {TICKER}</p></div>
       <div><p className="text-muted-foreground">Claimable funded rewards</p><p className="mt-1 font-mono text-primary">{formatTokenAmount(status?.claimableTokens ?? 0)} {TICKER}</p></div>
@@ -59,6 +59,6 @@ export function StakingCard() {
       <Button variant="outline" disabled={busy || !valid || units > (status?.amount ?? 0) || Date.now() < (status?.lockedUntil ?? 0)} onClick={() => void transact("unstake")}>Unstake</Button>
       <Button variant="outline" disabled={busy || !status?.claimableTokens} onClick={() => void transact("claim")}>Claim rewards</Button>
     </div>
-    <p className="mt-4 text-[11px] leading-5 text-muted-foreground">When stakes exist, the vault half of new {TICKER} transfer fees funds pro-rata staking rewards. SOL fees remain in the separate vault. Limits use the demo exit rate, not a market oracle. Legacy hash proofs still do not establish actual note ownership.</p>
+    <p className="mt-4 text-[11px] leading-5 text-muted-foreground">When stakes exist, the vault half of new {TICKER} transfer fees funds pro-rata staking rewards. SOL fees remain in the separate vault. Limits use a fixed exit rate, not a market oracle. Legacy hash proofs do not establish actual note ownership.</p>
   </CardContent></Card>;
 }

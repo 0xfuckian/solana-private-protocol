@@ -127,8 +127,8 @@ export default function Explorer() {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Explorer</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Simulation receipts—not Solana transactions. Filters apply to loaded
-            pages. Public mint prices and fee splits are decoded below.
+            Receipts indexed from the ledger. Filters apply to loaded pages.
+            Public mint prices and fee splits are decoded below.
           </p>
         </div>
         <div className="relative w-full sm:w-80">
@@ -259,7 +259,7 @@ export default function Explorer() {
               />
               <Stat
                 label="Protocol fee"
-                value={detail.envelope.feeDenomination === "SOLZK" ? `${formatTokenAmount(detail.envelope.feeTokens ?? 0)} ${TICKER}` : `${lamportsToSol(detail.envelope.feeLamports)} demo SOL`}
+                value={detail.envelope.feeDenomination === "SOLZK" ? `${formatTokenAmount(detail.envelope.feeTokens ?? 0)} ${TICKER}` : `${lamportsToSol(detail.envelope.feeLamports)} SOL`}
                 sub={
                   detail.envelope.feeInNote
                     ? "relayer paid from the note itself — sender spent no SOL"
@@ -308,7 +308,7 @@ export default function Explorer() {
             <h2 className="text-base font-semibold">Envelope feed</h2>
             <GradientBadge>
               <span className="size-1.5 rounded-full bg-primary sol-pulse" />
-              indexed simulation receipts
+              indexed receipts
             </GradientBadge>
           </div>
           <div className="overflow-x-auto">
@@ -368,9 +368,9 @@ export default function Explorer() {
                       <td className="px-6 py-3">{e.slot.toLocaleString()}</td>
                       <td className="px-6 py-3">{e.payloadSize} B</td>
                       <td className="px-6 py-3">
-                        {e.feeDenomination === "SOLZK" ? `${formatTokenAmount(e.feeTokens ?? e.feeLamports)} ${TICKER}` : `${lamportsToSol(e.feeLamports)} demo SOL`}
+                        {e.feeDenomination === "SOLZK" ? `${formatTokenAmount(e.feeTokens ?? e.feeLamports)} ${TICKER}` : `${lamportsToSol(e.feeLamports)} SOL`}
                         <p className="mt-1 text-[10px] text-muted-foreground">Vault {e.feeSplit.vault} / treasury {e.feeSplit.treasury} {e.feeDenomination}</p>
-                        {e.decodedMint && <p className="mt-1 text-[10px] text-muted-foreground">Price {lamportsToSol(e.decodedMint.priceUnits)} demo SOL</p>}
+                        {e.decodedMint && <p className="mt-1 text-[10px] text-muted-foreground">Price {lamportsToSol(e.decodedMint.priceUnits)} SOL</p>}
                       </td>
                       <td className="px-6 py-3 text-muted-foreground">
                         {fmtTime(e.createdAt)}
@@ -625,12 +625,12 @@ export default function Explorer() {
           <CardContent className="p-6">
             <div className="flex items-center gap-2 text-tier-obsidian">
               <ShieldCheck className="size-4" />
-              <p className="text-sm font-semibold">Not protected in this demo</p>
+              <p className="text-sm font-semibold">Not protected</p>
             </div>
             <ul className="mt-3 space-y-1.5 text-sm text-muted-foreground">
               <li>Public-address-derived encryption can expose note balances</li>
               <li>Authenticated transfers retain sender and receiver metadata</li>
-              <li>Transfer and asset amounts can be recovered from demo data</li>
+              <li>Transfer and asset amounts can be recovered from public data</li>
               <li>Which earlier note was spent</li>
               <li>Who swapped, or which stealth address was paid</li>
               <li>Unshield destinations' note history</li>

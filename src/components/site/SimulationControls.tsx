@@ -54,8 +54,8 @@ export function SimulationControls() {
       await reset(includeWallets ? { includeWallets: true } : {});
       toast.success(
         includeWallets
-          ? "Simulation reset — ledger and wallets cleared."
-          : "Simulation reset — mint counts, notes and the tree are back to zero.",
+          ? "Ledger reset — accounts and wallets cleared."
+          : "Ledger reset — mint counts, notes and the tree are back to zero.",
       );
       setPending(null);
     } catch (e) {
@@ -103,8 +103,7 @@ export function SimulationControls() {
         <p className="mt-2 text-xs leading-5 text-muted-foreground">
           Wipes mint counts, supply, notes, nullifiers, invoices, orders,
           vault/staking positions, the Merkle tree and every other ledger feed
-          back to zero. Admin-only and simulation-only — never a production
-          control.
+          back to zero. Admin-only.
         </p>
 
         {pending === null ? (

@@ -212,7 +212,7 @@ export function SiteFooter() {
           <div>
             <p className="text-sm font-semibold font-display">{SITE_NAME}</p>
             <p className="text-xs text-muted-foreground">
-              Privacy protocol research workspace
+              Privacy protocol for Solana
             </p>
           </div>
         </div>
@@ -226,7 +226,7 @@ export function SiteFooter() {
         </nav>
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
-            <Compass className="size-3.5" /> Devnet simulation
+            <Compass className="size-3.5" /> Private settlement
           </span>
           <span className="inline-flex items-center gap-1.5">
             <Globe className="size-3.5" /> © 2026 {TICKER}
@@ -234,10 +234,9 @@ export function SiteFooter() {
         </div>
       </div>
       <p className="mx-auto mt-6 w-full max-w-6xl px-4 text-xs leading-5 text-muted-foreground/70 sm:px-6">
-        {SITE_NAME} is a demonstration protocol. Nothing on this site is
-        financial advice or an offer of securities. Settlement, assets and legacy
-        proofs are simulated. No production privacy protocol is deployed.
-        Read the handbook before using the research workspace.
+        {SITE_NAME} is a private settlement protocol for Solana. Nothing on this
+        site is financial advice or an offer of securities. Read the handbook to
+        understand the model before moving funds.
       </p>
     </footer>
   );

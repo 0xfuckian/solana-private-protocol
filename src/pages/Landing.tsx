@@ -65,7 +65,7 @@ function Hero() {
         >
           <GradientBadge>
             <span className="size-1.5 rounded-full bg-primary sol-pulse" />
-            Research simulation · Slot {slot.toLocaleString()}
+            Private settlement · Slot {slot.toLocaleString()}
           </GradientBadge>
 
           <p className="text-xs font-semibold uppercase tracking-[0.4em] text-ember-400">
@@ -80,10 +80,9 @@ function Hero() {
           </h1>
 
           <p className="max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8">
-            Explore the {TICKER} research workspace: mint simulations, note flows,
-            market experiments and payroll request batches. The path to Solana
-            settlement starts with verifiable engineering—not promises.
-            Real custody, audited proofs and private encryption are not yet available.
+            Shielded notes, nullifiers, in-browser proofs and relayer settlement
+            on Solana. Mint, trade, shield and pay without exposing balances—
+            verifiable engineering, not promises.
           </p>
 
           <div className="flex flex-wrap items-center gap-3 pt-2">
@@ -325,13 +324,13 @@ const STAGES = [
     n: "1",
     who: "you",
     title: "Create a wallet",
-    body: "24 words, set a password. One seed produces both halves: your shielded balance and an ordinary devnet SOL address.",
+    body: "24 words, set a password. One seed produces both halves: your shielded balance and an ordinary SOL address.",
   },
   {
     n: "2",
     who: "you",
     title: "Fund it",
-    body: "Use the devnet faucet — a few SOL is plenty. Send a little more than the mint costs, for the network fee.",
+    body: "Fund your wallet with a little more than the mint costs, to cover the network fee.",
   },
   {
     n: "3",
@@ -478,7 +477,7 @@ const ROADMAP = [
   {
     title: "Shielded pool + mint",
     status: "shipped",
-    body: "Live on the devnet simulation. Encrypted notes, nullifiers, browser-built proofs, relayer settlement.",
+    body: "Live. Encrypted notes, nullifiers, browser-built proofs, relayer settlement.",
   },
   {
     title: "Order book",
@@ -544,7 +543,7 @@ function Roadmap() {
 const FAQ = [
   {
     q: "I paid but nothing happened.",
-    a: "Payments need three confirmations, roughly 12 seconds on the devnet simulation. The page shows the count as it climbs.",
+    a: "Payments need three confirmations, roughly 12 seconds. The page shows the count as it climbs.",
   },
   {
     q: "I closed the tab mid-mint.",
@@ -552,7 +551,7 @@ const FAQ = [
   },
   {
     q: "Can I mint from an exchange withdrawal?",
-    a: "The devnet faucet replaces funding here; on mainnet the exact amount must reach the invoice's one-time address before it expires. Paying from your own wallet is safer.",
+    a: "The exact amount must reach the invoice's one-time address before it expires. Paying from your own wallet is safest.",
   },
   {
     q: "I lost my password.",

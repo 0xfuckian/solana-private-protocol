@@ -313,7 +313,7 @@ function SwapCard() {
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             A constant-product pool owned by the protocol — swap {TICKER} for
             SOL and back without an order book, without unshielding. The
-            devnet reserves need seeding once.
+            pool reserves need seeding once.
           </p>
           <Button
             variant="outline"
@@ -337,7 +337,7 @@ function SwapCard() {
             }}
           >
             {busy ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Shuffle className="mr-1.5 size-3.5" />}
-            Seed devnet reserves
+            Seed reserves
           </Button>
         </CardContent>
       </Card>
@@ -726,11 +726,11 @@ function MarketInner() {
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-start justify-between gap-3 p-5 sm:flex-row sm:items-center">
             <div>
-              <p className="text-sm font-semibold">Devnet control</p>
+              <p className="text-sm font-semibold">Sellout control</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                Simulation only: jump the mint to its sold-out state to see
-                the book open. On mainnet this happens when the last lot is
-                minted — not before. Safe to run again: it backfills the
+                Jump the mint to its sold-out state to see the book open. On
+                the live chain this happens when the last lot is minted — not
+                before. Safe to run again: it backfills the
                 mint fees a sold-out mint would have paid into the vault.
               </p>
             </div>
@@ -749,7 +749,7 @@ function MarketInner() {
                 }
               }}
             >
-              <FlaskConical className="mr-1.5 size-4" /> Simulate sellout
+              <FlaskConical className="mr-1.5 size-4" /> Open the book
             </Button>
           </CardContent>
         </Card>
@@ -786,8 +786,8 @@ function MarketInner() {
             <p className="mt-2 font-mono-tabular text-[11px] text-muted-foreground">
               After sellout this book is the price of {TICKER}: list a buy or
               sell offer, someone takes it, the trade prints the price.
-              Devnet note: run the simulate-sellout control below to open the
-              book and backfill mint fees to the vault.
+              Run the sellout control below to open the book and backfill mint
+              fees to the vault.
             </p>
 
             <div className="mt-5 grid grid-cols-2 gap-6">
