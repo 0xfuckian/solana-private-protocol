@@ -40,7 +40,7 @@ export function SimulationControls() {
     try {
       const r = await claimFounder({});
       if (r.claimed) toast.success("Founder console unlocked.");
-      else toast.error("A founder account already exists on this deployment (an account with an email). Sign in as that account to reset.");
+      else toast.error("Founder bootstrap is disabled in this build.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -70,8 +70,8 @@ export function SimulationControls() {
       <Card className="mt-8 border-dashed">
         <CardContent className="flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs leading-5 text-muted-foreground">
-            Testing reset is admin-only. The first account created on this
-            deployment can claim the founder console.
+            Testing console. Any signed-in account can claim the founder role
+            here — testing only, not shipped to production.
           </p>
           <Button size="sm" variant="outline" disabled={busy} onClick={claim}>
             {busy ? (

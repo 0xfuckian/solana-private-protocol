@@ -95,6 +95,16 @@
 - [ ] Funded insurance under a voted claim policy
 - [ ] Governance: real votes, not the current weight preview
 
+### Test scaffolding (remove before launch)
+- [ ] Set `ALLOW_FOUNDER_BOOTSTRAP = false` in `src/convex/whitelist.ts`
+      (currently `true`: any signed-in account can grant itself admin)
+- [ ] Delete the `claimFounder` mutation and `SimulationControls` component,
+      and remove it from `/mint`, `/dashboard`, `/explorer`
+- [ ] Delete `operations:resetSimulation`, `operations:setPaused`,
+      `operations:founderDiagnostics` (unauthenticated — leaks admin emails)
+- [ ] Remove the faucet / demo funding hooks and `simulateSellout`, `seed`
+- [ ] Strip the removal-tooling leftovers so no test-only mutation ships
+
 ### Legal & comms
 - [ ] Legal review complete (token/custody/privacy)
 - [ ] Public audit + launch-criteria page

@@ -241,33 +241,26 @@ export const setWhitelistOpen = mutation({
 });
 
 /**
- * Founder bootstrap: on a deployment with no admin yet, the first account to
- * claim becomes the admin, which unlocks the reset/review console. Once an
- * admin exists, claiming is closed — the existing admin can still call it
- * idempotently. This does not depend on being the oldest user account, so it
- * stays reachable even if earlier test accounts exist or were removed.
+ * TESTING ONLY. Flip to `false` (and delete `SimulationControls` + this
+ * mutation) before launch. While true, ANY signed-in account can grant itself
+ * the admin role, which unlocks the destructive reset console.
+ */
+const ALLOW_FOUNDER_BOOTSTRAP = true;
+
+/**
+ * Testing-only founder bootstrap: any signed-in account becomes admin, no
+ * matter which account it is or whether an admin already exists. This exists
+ * purely so the reset console is always reachable during testing; it is not an
+ * authorization model and must not ship to production.
  */
 export const claimFounder = mutation({
   args: {},
   handler: async (ctx) => {
     const userId = await requireUserId(ctx);
+    if (!ALLOW_FOUNDER_BOOTSTRAP) return { claimed: false as const, reason: "disabled" as const };
     const user = await ctx.db.get(userId);
     if (user?.role === "admin") return { claimed: true as const, reason: "already_admin" as const };
-
-    const admins = await ctx.db
-      .query("users")
-      .filter(q => q.eq(q.field("role"), "admin"))
-      .collect();
-
-    // A real founder must be a claimable account. An anonymous / email-less
-    // stub (e.g. a stale test session) is not a permanent owner, so a signed-in
-    // account may supersede it. Once a real, email-bearing admin exists,
-    // claiming is closed for everyone else.
-    const realAdmin = admins.find(a => !!a.email);
-    if (realAdmin) return { claimed: false as const, reason: "admin_exists" as const };
-
-    for (const a of admins) await ctx.db.patch(a._id, { role: "user" });
     await ctx.db.patch(userId, { role: "admin" });
-    return { claimed: true as const, reason: admins.length ? ("superseded_stub" as const) : ("claimed" as const) };
+    return { claimed: true as const, reason: "claimed" as const };
   },
 });
