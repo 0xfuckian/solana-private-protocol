@@ -9,7 +9,7 @@ import { sealedStatement } from "../lib/spend";
 import { sha256Hex } from "./sha256";
 
 const LOCK_MS = 7 * 24 * 60 * 60 * 1000;
-const outputArgs = { commitment: v.string(), sealedNote: v.object({ ephemeral: v.string(), nonce: v.string(), ciphertext: v.string() }), proof: v.string() };
+const outputArgs = { commitment: v.string(), sealedNote: v.object({ ephemeral: v.string(), nonce: v.string(), ciphertext: v.string(), epk: v.optional(v.string()) }), proof: v.string() };
 
 async function ensurePool(ctx: MutationCtx) {
   const pool = await ctx.db.query("stakingPool").withIndex("by_key", q => q.eq("key", "global")).unique();

@@ -29,6 +29,8 @@ import {
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "react-router";
 import { toast } from "sonner";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 
 function UnlockInline({ slk }: { slk: ReturnType<typeof useSolzk> }) {
   const [password, setPassword] = useState("");
@@ -89,6 +91,7 @@ function PayInner() {
   const slk = useSolzk();
   const fragment = useLocation().hash.slice(1);
   const link = useMemo(() => decodePayLink(fragment), [fragment]);
+  const recipientKey = useQuery(api.protocol.getViewPubKey, link ? { address: link.to } : "skip");
 
   const [feeInNote, setFeeInNote] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -247,6 +250,16 @@ function PayInner() {
                 {formatTokenAmount(Math.max(0, net))} {TICKER}
               </span>
             </div>
+            <div className="mt-1 flex justify-between">
+              <span className="text-muted-foreground">Note encryption</span>
+              <span className="font-mono-tabular">
+                {recipientKey === undefined
+                  ? "checking…"
+                  : recipientKey?.v2
+                    ? "v2 ECDH — only recipient reads"
+                    : "legacy v1 — recipient should rotate"}
+              </span>
+            </div>
           </div>
           <div className="flex items-center justify-between rounded-lg border border-border/60 bg-background px-3 py-2.5">
             <div>
@@ -282,6 +295,7 @@ function PayInner() {
             try {
               const res = await slk.sendPrivate(link.to, link.amount, link.memo || "pay link", {
                 feeInNote,
+                recipientViewPub: recipientKey?.viewPubKey ?? undefined,
               });
               setPaid({ signature: res.signature, slot: res.slot, net });
               toast.success(`Paid ${formatTokenAmount(net)} ${TICKER}.`);

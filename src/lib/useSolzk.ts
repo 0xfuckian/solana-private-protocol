@@ -1,5 +1,16 @@
 import { spendStatement, sealedStatement, type ChangeOutput } from "./spend";
 import { assertUnits, isSolzkNote, relayerFeeTokens } from "./safety";
+import {
+  clearEncryptedViewingKey,
+  decryptViewingKey,
+  encryptViewingKey,
+  generateViewingKeypair,
+  isV2Sealed,
+  loadEncryptedViewingKey,
+  saveEncryptedViewingKey,
+  sealNoteV2,
+  unsealNoteV2,
+} from "./noteEncryption";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -139,9 +150,12 @@ export function useSolzk() {
     stealthMeta: null,
   });
   const [tagMatches, setTagMatches] = useState(0);
+  const [viewPubKey, setViewPubKey] = useState<string | null>(null);
   const seedWordsRef = useRef<string[] | null>(null);
   const spendKeyRef = useRef<string | null>(null);
   const stealthRef = useRef<string | null>(null);
+  const viewPrivJwkRef = useRef<JsonWebKey | null>(null);
+  const viewPubKeyRef = useRef<string | null>(null);
 
   const authUser = useQuery(api.users.currentUser);
   const serverWallet = useQuery(api.protocol.getMyWallet, authUser ? {} : "skip");
@@ -201,6 +215,21 @@ export function useSolzk() {
         const sh = await decryptSeed(blob, password);
         setSeedHex(sh);
         await deriveKeys(sh);
+        // v2 viewing private key: random ECDH key, password-encrypted at rest.
+        // Legacy devices have none — they keep v1-only scanning until rotation.
+        const enc = loadEncryptedViewingKey();
+        if (enc) {
+          try {
+            const jwk = await decryptViewingKey(enc, password);
+            viewPrivJwkRef.current = jwk;
+          } catch {
+            viewPrivJwkRef.current = null;
+          }
+        }
+        // View pub is published on-ledger; keep the local copy for self-seals.
+        // The authoritative copy is fetched via getViewPubKey at send time.
+        const storedPub = viewPubKeyRef.current;
+        if (storedPub) setViewPubKey(storedPub);
         setPhase("unlocked");
         if (!getLinkedWalletId() && serverWallet) {
           setLinkedWalletId(serverWallet.address);
@@ -222,6 +251,12 @@ export function useSolzk() {
       const sh = await seedHexFromWords(words);
       const blob = await encryptSeed(sh, password);
       saveWalletBlob(blob);
+      // Fresh random v2 viewing keypair — never derived from the seed.
+      const vk = await generateViewingKeypair();
+      saveEncryptedViewingKey(await encryptViewingKey(vk.privateJwk, password));
+      viewPrivJwkRef.current = vk.privateJwk;
+      viewPubKeyRef.current = vk.publicKey;
+      setViewPubKey(vk.publicKey);
       seedWordsRef.current = words;
       setSeedHex(sh);
       await deriveKeys(sh);
@@ -243,6 +278,13 @@ export function useSolzk() {
       const sh = await seedHexFromWords(words);
       const blob = await encryptSeed(sh, password);
       saveWalletBlob(blob);
+      // Rotation on restore: fresh viewing key. Old v2 notes need the old
+      // key backup — documented in the Handbook migration notes.
+      const vk = await generateViewingKeypair();
+      saveEncryptedViewingKey(await encryptViewingKey(vk.privateJwk, password));
+      viewPrivJwkRef.current = vk.privateJwk;
+      viewPubKeyRef.current = vk.publicKey;
+      setViewPubKey(vk.publicKey);
       setSeedHex(sh);
       await deriveKeys(sh);
       setPhase("unlocked");
@@ -255,6 +297,7 @@ export function useSolzk() {
     setSeedHex(null);
     setAddress(null);
     spendKeyRef.current = null;
+    viewPrivJwkRef.current = null;
     seedWordsRef.current = null;
     setBalance(0);
     setNotes([]);
@@ -265,14 +308,32 @@ export function useSolzk() {
 
   const forgetWallet = useCallback(() => {
     clearWalletBlob();
+    clearEncryptedViewingKey();
     seedWordsRef.current = null;
     spendKeyRef.current = null;
+    viewPrivJwkRef.current = null;
+    viewPubKeyRef.current = null;
+    setViewPubKey(null);
     setSeedHex(null);
     setAddress(null);
     setViewKeys({ incoming: null, outgoing: null, stealthMeta: null });
     setTagMatches(0);
     setPhase("none");
   }, []);
+
+  /** Seal to self with v2 when our viewing pub is available, else legacy v1. */
+  const sealToSelf = useCallback(async (note: { value: number; memo: string; r: string }) => {
+    const pub = viewPubKeyRef.current;
+    if (pub && viewPrivJwkRef.current) {
+      try {
+        return await sealNoteV2(pub, note);
+      } catch {
+        /* fall through to v1 */
+      }
+    }
+    if (!address) throw new Error("Wallet locked");
+    return await sealNoteFor(address, note);
+  }, [address]);
 
   // The shielded pool, as the node serves it to us: every sealed note and
   // every published nullifier. We trial-decrypt with our key and retire
@@ -299,7 +360,12 @@ export function useSolzk() {
             ? await ephemeralMatchesTag(address, n.sealed.ephemeral)
             : false;
         if (tagHit) tags++;
-        let opened = await tryUnsealNote(address, n.sealed);
+        // v2 first when the envelope carries an epk and we hold the viewing key.
+        let opened: { value: number; memo: string; r: string } | null = null;
+        if (isV2Sealed(n.sealed) && viewPrivJwkRef.current && viewPubKeyRef.current) {
+          opened = await unsealNoteV2(viewPrivJwkRef.current, viewPubKeyRef.current, n.sealed);
+        }
+        if (!opened) opened = await tryUnsealNote(address, n.sealed);
         let viaStealth = false;
         if (!opened && stealthRef.current) {
           // Stealth second pass: re-derive the one-time address from (my
@@ -357,6 +423,7 @@ export function useSolzk() {
         address,
         commitment: await commitmentFor(0, "registration", spendKeyRef.current),
         fundingLamports: faucetLamports,
+        viewPubKey: viewPubKeyRef.current ?? undefined,
       });
       setLinkedWalletId(address);
       const sig = makeSignature();
@@ -390,7 +457,7 @@ export function useSolzk() {
       receiver: string,
       amount: number,
       memo: string,
-      opts?: { feeInNote?: boolean },
+      opts?: { feeInNote?: boolean; recipientViewPub?: string },
     ) => {
       if (!address || !spendKeyRef.current) throw new Error("Wallet locked");
       assertUnits(amount);
@@ -425,17 +492,14 @@ export function useSolzk() {
       }
 
       const r = crypto.randomUUID();
-      const receiverNote = await sealNoteFor(receiver, {
-        value: net,
-        memo,
-        r,
-      });
+      // v2 when the recipient published a viewing key — only they can read.
+      // Otherwise legacy v1 (publicly decryptable) with the downgrade surfaced by callers.
+      const receiverNote = opts?.recipientViewPub
+        ? await sealNoteV2(opts.recipientViewPub, { value: net, memo, r })
+        : await sealNoteFor(receiver, { value: net, memo, r });
       const receiverCommitment = await commitmentFor(net, r, receiver);
       const change = acc - amount;
-      const changeNote =
-        change > 0
-          ? await sealNoteFor(address, { value: change, memo: "change", r })
-          : null;
+      const changeNote = change > 0 ? await sealToSelf({ value: change, memo: "change", r }) : null;
       const changeCommitment = changeNote
         ? await commitmentFor(change, r, address)
         : "";
@@ -457,7 +521,7 @@ export function useSolzk() {
         feeInNote: opts?.feeInNote === true,
       });
     },
-    [address, balance, notes, sendPrivateMut, serverWallet, staking],
+    [address, balance, notes, sendPrivateMut, serverWallet, staking, sealToSelf],
   );
 
   /** Select notes and produce nullifiers for a shielded spend of `amount`. */
@@ -483,11 +547,11 @@ export function useSolzk() {
       if (acc > amount) {
         const value = acc - amount;
         const r = crypto.randomUUID();
-        change = { value, commitment: await commitmentFor(value, r, address), sealed: await sealNoteFor(address, { value, memo: symbol === "SOLZK" ? "change" : `asset:${symbol}`, r }) };
+        change = { value, commitment: await commitmentFor(value, r, address), sealed: await sealToSelf({ value, memo: symbol === "SOLZK" ? "change" : `asset:${symbol}`, r }) };
       }
       return { nullifiers, selected, acc, inputTotal: acc, change };
     },
-    [notes, address],
+    [notes, address, sealToSelf],
   );
 
   /** Burn SOLZK from your notes to unlock a permanent fee-discount tier. */
@@ -570,10 +634,7 @@ export function useSolzk() {
       );
       const change = acc - amount;
       const changeR = crypto.randomUUID();
-      const changeNote =
-        change > 0
-          ? await sealNoteFor(address, { value: change, memo: "change", r: changeR })
-          : null;
+      const changeNote = change > 0 ? await sealToSelf({ value: change, memo: "change", r: changeR }) : null;
       const changeCommitment = changeNote
         ? await commitmentFor(change, changeR, address)
         : "";
@@ -594,7 +655,7 @@ export function useSolzk() {
         feeInNote: opts?.feeInNote === true,
       });
     },
-    [address, balance, buildSpend, sendPrivateMut, serverWallet, staking],
+    [address, balance, buildSpend, sendPrivateMut, serverWallet, staking, sealToSelf],
   );
 
   /**
@@ -659,7 +720,7 @@ export function useSolzk() {
       const tokensOut = Math.floor(
         (shares * pool.depositedTokens) / Math.max(1, pool.totalShares),
       );
-      const sealed = await sealNoteFor(address, {
+      const sealed = await sealToSelf({
         value: tokensOut,
         memo: "vault withdraw",
         r,
@@ -677,7 +738,7 @@ export function useSolzk() {
       refreshNotes();
       return res as { tokensOut: number };
     },
-    [address, vaultPool, withdrawMut, refreshNotes],
+    [address, vaultPool, withdrawMut, refreshNotes, sealToSelf],
   );
 
   /** Devnet simulation hooks: size the claims pool, seed the swap AMM. */
@@ -730,7 +791,7 @@ export function useSolzk() {
       assertUnits(units);
       if (!address) throw new Error("Wallet locked");
       const r = crypto.randomUUID();
-      const sealed = await sealNoteFor(address, {
+      const sealed = await sealToSelf({
         value: units,
         memo: `asset:${symbol}`,
         r,
@@ -741,7 +802,7 @@ export function useSolzk() {
       await shieldAssetMut({ symbol, units, commitment, sealedNote: sealed, proof });
       refreshNotes();
     },
-    [address, shieldAssetMut, refreshNotes],
+    [address, shieldAssetMut, refreshNotes, sealToSelf],
   );
 
   /** Unshield an asset note back to a transparent balance. */
@@ -811,7 +872,7 @@ export function useSolzk() {
         const quote = quoteSwapSol(lamportsIn);
         if (!quote) throw new Error("Swap pool unavailable — seed it first.");
         const r = crypto.randomUUID();
-        const sealed = await sealNoteFor(address, {
+        const sealed = await sealToSelf({
           value: quote.outAmount,
           memo: "swap",
           r,
@@ -851,7 +912,7 @@ export function useSolzk() {
         slot: number;
       }>;
     },
-    [address, buildSpend, quoteSwapSol, swapSolForTokensMut, swapTokensForSolMut],
+    [address, buildSpend, quoteSwapSol, swapSolForTokensMut, swapTokensForSolMut, sealToSelf],
   );
 
   const progressToSellout = useMemo(() => {
@@ -872,8 +933,10 @@ export function useSolzk() {
     // keys
     seedHex,
     address,
+    viewPubKey,
     hasWords: seedWordsRef.current !== null,
     getWords: () => seedWordsRef.current,
+    sealToSelf,
     // actions
     createWallet,
     restoreWallet,

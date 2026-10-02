@@ -5,7 +5,7 @@ This app is a Convex simulation. No Solana custody program, RPC settlement, real
 
 ## What we do not claim
 - No anonymity, untraceability, regulatory approval, insurance coverage, solvency, or guaranteed returns.
-- The legacy note encryption key is derived from public address and ephemeral data. Anyone with the address can decrypt those notes. AES-GCM integrity does not solve this confidentiality failure.
+- Legacy v1 note keys are derived from public address and ephemeral data. Anyone with the address can decrypt those notes, forever. AES-GCM integrity does not solve this confidentiality failure. New notes default to v2 (per-note ephemeral ECDH P-256 + HKDF + AES-GCM-256, 65-byte epk, 512-byte ct) when the recipient published a viewing key: only the viewing-private holder can read, with fresh forward secrecy per note. v1 remains as fallback for legacy wallets and is labeled in the Pay UI. Restored wallets rotate to a fresh viewing key; old v2 notes need the old key backup. Ownership/value/conservation are still unproven without the audited circuit.
 - Legacy SHA-256 statement hashes are forgeable by anybody. They prove neither ownership, membership, input value, nor conservation. The simulated spending endpoints remain unsafe for real funds.
 - Authenticated requests, timestamps, public amounts, account-linked records, IP/network metadata and browser storage can identify participants.
 - Fixed-size padded strings do not establish constant-size serialized Solana transactions, and do not hide timing or amount correlations.
@@ -13,6 +13,8 @@ This app is a Convex simulation. No Solana custody program, RPC settlement, real
 
 ## Proof and tree scaffolding
 The snarkjs client adapter calls real Groth16 proving and verifies the result, but requires explicitly supplied WASM, zkey and verification key. No circuit artifacts are included. The production server action always rejects until a reviewed circuit and complete public-signal authorization binding are implemented. The demo hash proof is not upgraded by these adapters.
+
+`circuits/solzk-joinsplit.circom` is a review scaffold documenting the intended join-split statement (ownership, conservation, asset-ID, nullifier, Merkle depth-26, ciphertext digest, fee/domain binding). It is not audited, has no ceremony, and ships no wasm/zkey/vkey. `circuits/vectors.json` holds placeholder vectors. `solana/solzk_verifier.json` and `src/lib/solana.ts` scaffold the Anchor verifier + custody program and RPC wiring point; `isSettlementLive()` is false until a program deploys and RPC is configured. Nothing here settles on Solana yet.
 
 New notes append to a depth-26 incremental Poseidon tree. Indexed nodes supply current sibling paths; the latest 100 roots are retained. Legacy SHA-256 commitments are reduced into the BN254 scalar field only for the scaffold; this is not the future circuit's native commitment format. Existing notes have no leaf index and require a separately reviewed migration. Old-root proof paths require historical snapshots or a client-maintained tree, which are not implemented.
 

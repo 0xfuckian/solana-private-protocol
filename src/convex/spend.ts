@@ -4,10 +4,14 @@ import { appendNote } from "./merkle";
 import { sha256Hex } from "./sha256";
 import { spendStatement, validateSpend, type SpendInputs } from "../lib/spend";
 
+const sealedV2 = v.object({ ephemeral: v.string(), nonce: v.string(), ciphertext: v.string(), epk: v.optional(v.string()) });
+
 export const spendArgs = {
   inputTotal: v.number(),
-  change: v.optional(v.object({ value: v.number(), commitment: v.string(), sealed: v.object({ ephemeral: v.string(), nonce: v.string(), ciphertext: v.string() }) })),
+  change: v.optional(v.object({ value: v.number(), commitment: v.string(), sealed: sealedV2 })),
 };
+
+export const sealedNoteArgs = sealedV2;
 
 /** Simulation only: checks declared arithmetic and permanent replay, not ownership. */
 export async function consumeSpend(ctx: MutationCtx, spend: SpendInputs, amount: number, domain: string, proof: string, slot: number) {

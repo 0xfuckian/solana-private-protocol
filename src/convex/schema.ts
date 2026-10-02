@@ -20,6 +20,8 @@ const sealedNote = v.object({
   ephemeral: v.string(),
   nonce: v.string(),
   ciphertext: v.string(),
+  // v2 ECDH ephemeral pubkey (b64 65-byte P-256). Absent = legacy v1.
+  epk: v.optional(v.string()),
 });
 
 const schema = defineSchema(
@@ -91,6 +93,9 @@ const schema = defineSchema(
     wallets: defineTable({
       userId: v.id("users"),
       address: v.string(),
+      // v2 viewing public key (b64 65-byte P-256): published so senders can
+      // seal ECDH notes to this wallet. Absent for legacy wallets.
+      viewPubKey: v.optional(v.string()),
       fundingLamports: v.number(),
       faucetTotalLamports: v.number(),
       lotsMinted: v.number(),

@@ -275,6 +275,7 @@ export const settleTrade = mutation({
       ephemeral: v.string(),
       nonce: v.string(),
       ciphertext: v.string(),
+      epk: v.optional(v.string()),
     }),
     commitment: v.string(),
     proof: v.string(),

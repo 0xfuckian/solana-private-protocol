@@ -10,12 +10,24 @@ export function assertNullifiers(values: string[]): void {
   if (new Set(values).size !== values.length) throw new Error("Duplicate nullifier in transaction.");
 }
 
-export function assertSealedNote(note: { ephemeral: string; nonce: string; ciphertext: string }): void {
+export function assertSealedNote(note: { ephemeral: string; nonce: string; ciphertext: string; epk?: unknown }): void {
   // Shape validation is NOT ownership, encryption correctness, or a ZK proof.
   if (!/^[A-Za-z0-9+/]{22}==$/.test(note.ephemeral) ||
       !/^[A-Za-z0-9+/]{16}$/.test(note.nonce) ||
       !/^[A-Za-z0-9+/]{683}=$/.test(note.ciphertext)) {
     throw new Error("Malformed sealed note: expected 16-byte ephemeral, 12-byte nonce and 512-byte ciphertext.");
+  }
+  // v2 notes carry a 65-byte uncompressed P-256 ephemeral public key.
+  // Presence of `epk` marks v2 (ECDH+HKDF+AES-GCM); absence is legacy v1.
+  if (note.epk !== undefined) {
+    if (typeof note.epk !== "string") throw new Error("Malformed sealed note: epk must be base64.");
+    let raw = -1;
+    try {
+      raw = atob(note.epk).length;
+    } catch {
+      raw = -1;
+    }
+    if (raw !== 65) throw new Error("Malformed sealed note: v2 epk must decode to 65 bytes.");
   }
 }
 

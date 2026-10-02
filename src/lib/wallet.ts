@@ -278,6 +278,8 @@ export interface SealedNote {
   ephemeral: string; // b64 ephemeral key material
   nonce: string; // b64 AES-GCM iv
   ciphertext: string; // b64 AES-GCM(JSON{value, memo, r}) — fixed length
+  /** v2 ECDH epk (b64 65-byte P-256). Presence marks v2. */
+  epk?: string;
 }
 
 // ---------------------------------------------------------------------------

@@ -90,7 +90,7 @@ export const claimFees = mutation({
 });
 
 export const withdraw = mutation({
-  args: { shares: v.number(), expectedTokensOut: v.number(), sealedNote: v.object({ ephemeral: v.string(), nonce: v.string(), ciphertext: v.string() }), commitment: v.string(), proof: v.string() },
+  args: { shares: v.number(), expectedTokensOut: v.number(), sealedNote: v.object({ ephemeral: v.string(), nonce: v.string(), ciphertext: v.string(), epk: v.optional(v.string()) }), commitment: v.string(), proof: v.string() },
   handler: async (ctx, { shares, expectedTokensOut, sealedNote, commitment, proof }) => {
     const wallet = await getWalletForUserOrThrow(ctx, await requireUserId(ctx));
     const state = await ensureProtocolState(ctx);

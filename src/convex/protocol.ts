@@ -52,7 +52,15 @@ interface SealedObj {
   ephemeral: string;
   nonce: string;
   ciphertext: string;
+  epk?: string;
 }
+
+const sealedV2 = {
+  ephemeral: v.string(),
+  nonce: v.string(),
+  ciphertext: v.string(),
+  epk: v.optional(v.string()),
+};
 
 function b64UrlSafe(b64: string): string {
   return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -114,9 +122,10 @@ export function parseSealed(payload: string): SealedObj | null {
     if (
       typeof obj.ephemeral === "string" &&
       typeof obj.nonce === "string" &&
-      typeof obj.ciphertext === "string"
+      typeof obj.ciphertext === "string" &&
+      (obj.epk === undefined || typeof obj.epk === "string")
     ) {
-      return obj;
+      return obj as SealedObj;
     }
     return null;
   } catch {
@@ -230,8 +239,9 @@ export const registerWallet = mutation({
     address: v.string(),
     commitment: v.string(),
     fundingLamports: v.number(),
+    viewPubKey: v.optional(v.string()),
   },
-  handler: async (ctx, { address, commitment, fundingLamports }) => {
+  handler: async (ctx, { address, commitment, fundingLamports, viewPubKey }) => {
     assertUnits(fundingLamports, "Demo funding", true);
     const userId = await requireUserId(ctx);
     if (address.length !== ADDRESS_LEN) {
@@ -254,9 +264,19 @@ export const registerWallet = mutation({
       throw new Error("This shielded address is already registered.");
     }
     const state = await ensureProtocolState(ctx);
+    if (viewPubKey !== undefined) {
+      let raw = -1;
+      try {
+        raw = atob(viewPubKey).length;
+      } catch {
+        raw = -1;
+      }
+      if (raw !== 65) throw new Error("viewPubKey must decode to 65 bytes.");
+    }
     const id = await ctx.db.insert("wallets", {
       userId,
       address,
+      viewPubKey,
       fundingLamports,
       faucetTotalLamports: fundingLamports,
       lotsMinted: 0,
@@ -529,16 +549,8 @@ export const sendPrivate = mutation({
     receiver: v.string(),
     amount: v.number(),
     receiverCommitment: v.string(),
-    sealedNote: v.object({
-      ephemeral: v.string(),
-      nonce: v.string(),
-      ciphertext: v.string(),
-    }),
-    changeNote: v.object({
-      ephemeral: v.string(),
-      nonce: v.string(),
-      ciphertext: v.string(),
-    }),
+    sealedNote: v.object(sealedV2),
+    changeNote: v.object(sealedV2),
     changeCommitment: v.string(),
     proof: v.string(),
     // Fee-in-note: the relayer is paid out of the spent value in SOLZK and
@@ -1159,11 +1171,7 @@ export const shieldAsset = mutation({
     symbol: v.string(),
     units: v.number(),
     commitment: v.string(),
-    sealedNote: v.object({
-      ephemeral: v.string(),
-      nonce: v.string(),
-      ciphertext: v.string(),
-    }),
+    sealedNote: v.object(sealedV2),
     proof: v.string(),
   },
   handler: async (ctx, { symbol, units, commitment, sealedNote, proof }) => {
@@ -1348,5 +1356,23 @@ export const listMyInvoices = query({
       .withIndex("by_wallet", (q) => q.eq("walletId", wallet._id))
       .collect();
     return invoices.sort((a, b) => b.createdAt - a.createdAt);
+  },
+});
+
+/**
+ * v2 viewing-key directory: senders fetch the recipient's published P-256
+ * viewing pubkey to seal ECDH notes. Returns null for legacy wallets —
+ * callers must fall back to v1 with a visible downgrade warning.
+ */
+export const getViewPubKey = query({
+  args: { address: v.string() },
+  handler: async (ctx, { address }) => {
+    await protocolStateOrDefault(ctx);
+    const wallet = await ctx.db
+      .query("wallets")
+      .withIndex("by_address", (q) => q.eq("address", address))
+      .first();
+    if (!wallet?.viewPubKey) return { address, viewPubKey: null as string | null, v2: false };
+    return { address, viewPubKey: wallet.viewPubKey, v2: true };
   },
 });

@@ -8,7 +8,7 @@ import { payrollBatchDomain, payrollDispatchSummary } from "../lib/payroll";
 import { LAMPORTS_PER_SOL, REDEEM_LAMPORTS_PER_TOKEN } from "../lib/protocol";
 
 export const dispatch = mutation({
-  args: { nullifiers: v.array(v.string()), ...spendArgs, proof: v.string(), outputs: v.array(v.object({ payee: v.string(), amount: v.number(), commitment: v.string(), sealed: v.object({ ephemeral: v.string(), nonce: v.string(), ciphertext: v.string() }) })) },
+  args: { nullifiers: v.array(v.string()), ...spendArgs, proof: v.string(), outputs: v.array(v.object({ payee: v.string(), amount: v.number(), commitment: v.string(), sealed: v.object({ ephemeral: v.string(), nonce: v.string(), ciphertext: v.string(), epk: v.optional(v.string()) }) })) },
   handler: async (ctx, args) => {
     const wallet = await getWalletForUserOrThrow(ctx, await requireUserId(ctx));
     const state = await ensureProtocolState(ctx);
