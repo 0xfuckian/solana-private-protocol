@@ -25,7 +25,6 @@ import { useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router";
 
 const NAV = [
-  { to: "/whitelist", label: "Whitelist" },
   { to: "/mint", label: "Mint" },
   { to: "/market", label: "Market" },
   { to: "/vault", label: "Vault" },

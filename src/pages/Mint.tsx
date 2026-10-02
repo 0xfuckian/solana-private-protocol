@@ -10,14 +10,12 @@ import { PageShell, SiteLayout } from "@/components/site/Layout";
 import { RequireAuth } from "@/components/RequireAuth";
 import { api } from "@/convex/_generated/api";
 import {
-  APPROVED_MAX_LOTS,
   CONFIRMATIONS_REQUIRED,
   ENVELOPE_MINT_BYTES,
   LOT_SIZE,
   MAX_MINT_PER_TX,
   OPEN_MAX_LOTS,
   OPEN_RATE_LAMPORTS,
-  APPROVED_RATE_LAMPORTS,
   TICKER,
   TOTAL_LOTS,
   TOTAL_SUPPLY,
@@ -425,10 +423,10 @@ function MintForm({
   const [lots, setLots] = useState(1);
   const [busy, setBusy] = useState(false);
 
-  const approved = wallet?.approved ?? false;
-  const tier = approved ? "approved" : "open";
-  const cap = approved ? APPROVED_MAX_LOTS : OPEN_MAX_LOTS;
-  const perLot = approved ? APPROVED_RATE_LAMPORTS : OPEN_RATE_LAMPORTS;
+  // Open mint: one price for everyone. Burn tiers still discount transfers.
+  const tier = "open" as const;
+  const cap = OPEN_MAX_LOTS;
+  const perLot = OPEN_RATE_LAMPORTS;
   const lotsUsed = wallet?.lotsMinted ?? 0;
   const lotsLeft = Math.max(0, cap - lotsUsed);
   const remainingSupply = Math.max(
@@ -671,23 +669,8 @@ function MintForm({
 
               <p className="mt-4 text-[11px] leading-5 text-muted-foreground">
                 Caps are per wallet across every invoice: {lotsLeft} of {cap}{" "}
-                lots left on the {tier} rate. First come, first served.
+                lots left at {lamportsToSol(perLot)} SOL per lot. First come, first served.
               </p>
-              {!approved && (
-                <div className="mt-3 rounded-lg border border-primary/25 bg-primary/5 p-3">
-                  <p className="text-[11px] leading-5 text-muted-foreground">
-                    You're on the open rate. Whitelisted wallets pay{" "}
-                    <span className="font-semibold text-primary">
-                      {lamportsToSol(APPROVED_RATE_LAMPORTS)} SOL
-                    </span>{" "}
-                    per lot — apply on the{" "}
-                    <Link to="/whitelist" className="text-primary underline underline-offset-2">
-                      whitelist page
-                    </Link>
-                    .
-                  </p>
-                </div>
-              )}
             </div>
 
             <div className="rounded-xl border border-border/60 bg-background p-4 text-right">
@@ -1143,14 +1126,13 @@ function MintPageInner() {
       <div className="mb-8 flex flex-col gap-1">
         <GradientBadge className="w-fit">
           <span className="size-1.5 rounded-full bg-primary sol-pulse" />
-          Mint live · approved rate for whitelisted wallets
+          Mint live · open mint — no allowlist
         </GradientBadge>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">
           Mint {TICKER}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Lots of {formatTokenAmount(LOT_SIZE)} · {lamportsToSol(OPEN_RATE_LAMPORTS)} SOL open ·{" "}
-          {lamportsToSol(APPROVED_RATE_LAMPORTS)} SOL approved
+          Lots of {formatTokenAmount(LOT_SIZE)} · {lamportsToSol(OPEN_RATE_LAMPORTS)} SOL per lot
         </p>
       </div>
       {body}

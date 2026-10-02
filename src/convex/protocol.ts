@@ -209,9 +209,10 @@ export const getMyWallet = query({
     const wallet = await getWalletForUser(ctx, userId);
     if (!wallet) return null;
     const state = await protocolStateOrDefault(ctx);
-    // Approved tier = cleared by the pre-launch whitelist (founder-reviewed),
-    // matched by wallet address or by the submitting account.
-    const approved = await isWalletWhitelisted(ctx, wallet);
+    // Open mint: the whitelist no longer gates pricing. Kept for history;
+    // always false so every wallet sees the single open rate.
+    void isWalletWhitelisted;
+    const approved = false;
     return {
       _id: wallet._id,
       address: wallet.address,
@@ -342,18 +343,14 @@ export const openInvoice = mutation({
       throw new Error("That many lots would exceed the supply cap.");
     }
 
-    // Approved tier: cleared by the pre-launch whitelist. A price, not a
-    // guarantee — approval unlocks the rate, it does not reserve supply.
-    const isApproved = await isWalletWhitelisted(ctx, wallet);
-    const perLot =
-      tier === "approved" && isApproved
-        ? APPROVED_RATE_LAMPORTS
-        : OPEN_RATE_LAMPORTS;
-    const effTier: RateTier =
-      tier === "approved" && isApproved ? "approved" : "open";
+    // Open mint: one price for everyone. The `tier` argument is accepted for
+    // old clients but ignored — every invoice prices at the open rate.
+    void tier;
+    const perLot = OPEN_RATE_LAMPORTS;
+    const effTier: RateTier = "open";
     const lamports = perLot * lots;
 
-    const cap = effTier === "approved" ? APPROVED_MAX_LOTS : OPEN_MAX_LOTS;
+    const cap = OPEN_MAX_LOTS;
     if (wallet.lotsMinted + lots > cap) {
       throw new Error(
         `Cap reached: ${cap.toLocaleString()} lots per wallet on the ${effTier} rate.`,
