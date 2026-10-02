@@ -37,6 +37,8 @@ import {
   Lock,
   RefreshCw,
   ScanLine,
+  ShieldAlert,
+  Tags,
   Unlock,
   Wallet,
 } from "lucide-react";
@@ -126,6 +128,11 @@ function SendCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
   const [feeInNote, setFeeInNote] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  const payeeLabels = useQuery(
+    api.asp.getLabels,
+    receiver.length === 44 ? { address: receiver } : "skip",
+  );
+
   const amountNum = Number(amount) || 0;
   const burned = slk.serverWallet?.burnedTokens ?? 0;
   const tier = discountTierForBurned(burned);
@@ -148,6 +155,27 @@ function SendCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
             onChange={(e) => setReceiver(e.target.value.trim())}
             className="font-mono-tabular text-xs"
           />
+          {payeeLabels && payeeLabels.length > 0 && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+              <p className="flex items-center gap-1.5 text-xs font-medium text-amber-500">
+                <ShieldAlert className="size-3.5" /> Paying to a labelled address
+              </p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {payeeLabels.map((l) => (
+                  <span
+                    key={l._id}
+                    className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] text-amber-500"
+                  >
+                    {l.label}
+                  </span>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[11px] leading-4 text-muted-foreground">
+                Public association-set labels attached to this payee. The ledger
+                still links nothing — resolve before you send.
+              </p>
+            </div>
+          )}
           <div className="flex gap-3">
             <Input
               type="number"
@@ -542,6 +570,112 @@ function RequestPaymentCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
   );
 }
 
+function AssociationSetsCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
+  const [label, setLabel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const mine = useQuery(api.asp.getMyLabels, {});
+  const recent = useQuery(api.asp.listRecentLabels, {});
+  const register = useMutation(api.asp.registerLabel);
+
+  return (
+    <Card>
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold">Association sets</h2>
+          <Tags className="size-4 text-primary" />
+        </div>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          The public label registry. Anyone can assert a label against any
+          shielded address; senders resolve labels before paying. The ledger
+          itself links nothing — labels are assertions, not verdicts.
+        </p>
+
+        <div className="mt-4 rounded-lg border border-border/60 bg-background px-3 py-2.5">
+          <p className="text-xs font-medium">
+            How the pool sees you{" "}
+            {mine && (
+              <span className="font-mono-tabular text-muted-foreground">
+                {shortAddress(mine.address)}
+              </span>
+            )}
+          </p>
+          {mine && mine.labels.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {mine.labels.map((l) => (
+                <span
+                  key={l._id}
+                  className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] text-primary"
+                >
+                  {l.label}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-1.5 text-[11px] text-muted-foreground">
+              {mine ? "No labels attached — unlabelled in the registry." : "Loading…"}
+            </p>
+          )}
+        </div>
+
+        <div className="mt-3 flex gap-2">
+          <Input
+            placeholder="Assert a label for your address (2–32 chars)"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            maxLength={32}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy || label.trim().length < 2 || !slk.address}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const r = await register({ address: slk.address!, label });
+                toast.success(
+                  r.alreadyRegistered
+                    ? `Label "${r.label}" was already on your address.`
+                    : `Label "${r.label}" published to the registry.`,
+                );
+                setLabel("");
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Could not register label");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? <Loader2 className="size-3.5 animate-spin" /> : "Publish"}
+          </Button>
+        </div>
+
+        <div className="mt-4 border-t border-border/60 pt-4">
+          <p className="text-xs font-semibold">Recent registry activity</p>
+          <div className="mt-2 space-y-1">
+            {recent && recent.length > 0 ? (
+              recent.slice(0, 6).map((l) => (
+                <div
+                  key={l._id}
+                  className="flex items-center justify-between rounded-md border border-border/50 px-2.5 py-1.5 text-xs"
+                >
+                  <span className="text-primary">{l.label}</span>
+                  <span className="font-mono-tabular text-muted-foreground">
+                    {shortAddress(l.address)}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <p className="text-[11px] text-muted-foreground">
+                {recent ? "Registry is empty — publish the first label." : "Loading…"}
+              </p>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function DashboardInner() {
   const slk = useSolzk();
   const invoices = useQuery(
@@ -704,6 +838,8 @@ function DashboardInner() {
         <ViewKeysCard slk={slk} />
 
         <RequestPaymentCard slk={slk} />
+
+        <AssociationSetsCard slk={slk} />
       </div>
 
       <Card>

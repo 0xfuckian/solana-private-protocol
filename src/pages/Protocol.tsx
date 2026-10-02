@@ -433,6 +433,12 @@ export default function Protocol() {
                 "/dashboard",
                 "Burn for a tier",
               ],
+              [
+                "Association sets",
+                "A public label registry anyone can assert against: senders resolve a payee's labels before paying, breaking the same-address heuristic. Labels are assertions — the ledger still links nothing.",
+                "/dashboard",
+                "Open the label registry",
+              ],
             ].map(([title, body, href, cta]) => (
               <div
                 key={title}
@@ -463,9 +469,8 @@ export default function Protocol() {
 
         <Section id="roadmap" num="08" kicker="Roadmap" title="What comes next">
           <p>
-            Still ahead of this build: association sets to break the same-
-            address heuristic, private swaps routed through a DEX without
-            unshielding, shield for arbitrary SPL assets, and stealth
+            Still ahead of this build: private swaps routed through a DEX
+            without unshielding, shield for arbitrary SPL assets, and stealth
             addresses so a published payment address stops being a stable
             identifier. Fee sharing through zero-knowledge claims — proving
             you held value at a past anchor without revealing who you are —

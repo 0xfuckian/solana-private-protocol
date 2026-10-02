@@ -226,6 +226,18 @@ const schema = defineSchema(
       slot: v.number(),
       createdAt: v.number(),
     }).index("by_created", ["createdAt"]),
+
+    // Association-set registry: public, self-asserted labels for shielded
+    // addresses ("this address belongs to Exchange X"). Resolving a payee's
+    // label at send time breaks the same-address heuristic without ever
+    // linking balances — the ASP slice of the protocol design.
+    aspLabels: defineTable({
+      address: v.string(),
+      label: v.string(),
+      createdAt: v.number(),
+    })
+      .index("by_address", ["address"])
+      .index("by_label", ["label"]),
   },
   {
     schemaValidation: false,
