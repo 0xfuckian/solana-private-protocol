@@ -507,21 +507,10 @@ function MintForm({
             {TICKER}
           </span>
         </div>
-        <div className="grid grid-cols-2 divide-x divide-border/40 lg:grid-cols-4">
+        <div className="grid grid-cols-2 divide-x divide-border/40 sm:grid-cols-3">
           <div className="p-5">
             <p className="font-mono-tabular text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-              Approved rate
-            </p>
-            <p className="mt-1.5 font-mono-tabular text-2xl font-semibold text-primary">
-              {lamportsToSol(APPROVED_RATE_LAMPORTS)} SOL
-            </p>
-            <p className="mt-1 font-mono-tabular text-[11px] text-muted-foreground">
-              10,000 {TICKER} · 0.015 SOL
-            </p>
-          </div>
-          <div className="p-5">
-            <p className="font-mono-tabular text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-              Open rate
+              Open mint rate
             </p>
             <p className="mt-1.5 font-mono-tabular text-2xl font-semibold text-primary">
               {lamportsToSol(OPEN_RATE_LAMPORTS)} SOL
@@ -579,7 +568,7 @@ function MintForm({
             Acquisition
           </p>
           <span className="rounded border border-border px-2 py-0.5 font-mono-tabular text-[11px] uppercase tracking-wider text-muted-foreground">
-            {tier} rate
+            open mint
           </span>
         </div>
         <CardContent className="p-6">
@@ -798,7 +787,7 @@ function MintForm({
         {[
           ["I paid but nothing happened.", `Payments need ${CONFIRMATIONS_REQUIRED} confirmations (~12s). The invoice page shows the count climbing, then settlement starts by itself — there is no mint button.`],
           ["I closed the tab mid-mint.", "Nothing is lost. Reopen the mint page with the same wallet; the newest unsettled invoice resumes automatically."],
-          ["Why is my cap lower than expected?", `Caps are per wallet across every invoice: ${lotsLeft} of ${cap} lots left on the ${tier} rate. Whitelisted wallets use the approved rate.`],
+          ["Why is my cap lower than expected?", `Caps are per wallet across every invoice: ${lotsLeft} of ${cap} lots left at the open mint rate. First come, first served.`],
           ["Where does the 5% go?", "Half to the vault fee pool (claimable by depositors), half to the treasury. The other 95% becomes protocol liquidity backing redemptions."],
         ].map(([q, a]) => (
           <div key={q as string} className="rounded-xl border border-border/70 bg-card p-4">

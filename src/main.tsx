@@ -7,7 +7,7 @@ import { SolzkProvider } from "@/lib/solzk-context";
 import { WhitelistGate } from "@/components/site/WhitelistGate";
 import React, { StrictMode, useEffect, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
 import "./index.css";
 
 // Lazy load route components for better code splitting
@@ -22,7 +22,6 @@ const Pay = lazy(() => import("./pages/Pay.tsx"));
 const Handbook = lazy(() => import("./pages/Handbook.tsx"));
 const Payroll = lazy(() => import("./pages/Payroll.tsx"));
 const Protocol = lazy(() => import("./pages/Protocol.tsx"));
-const Whitelist = lazy(() => import("./pages/Whitelist.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
@@ -180,7 +179,8 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/docs" element={<Handbook />} />
               <Route path="/payroll" element={<RequireAuth><Payroll /></RequireAuth>} />
               <Route path="/protocol" element={<Protocol />} />
-              <Route path="/whitelist" element={<Whitelist />} />
+              {/* Retired: old whitelist links land on the open mint. */}
+              <Route path="/whitelist" element={<Navigate to="/mint" replace />} />
               <Route path="*" element={<NotFound />} />
               </Routes>
               </WhitelistGate>

@@ -3,8 +3,6 @@ import { GradientBadge, SectionHeading } from "@/components/site/Stat";
 import { SiteLayout } from "@/components/site/Layout";
 import { api } from "@/convex/_generated/api";
 import {
-  APPROVED_MAX_LOTS,
-  APPROVED_RATE_LAMPORTS,
   ENVELOPE_MINT_BYTES,
   ENVELOPE_TRANSFER_BYTES,
   LOT_SIZE,
@@ -89,8 +87,8 @@ function Hero() {
               size="lg"
               className="bg-sol-gradient text-[#04101a] font-semibold shadow-[0_0_28px_rgba(20,241,149,0.35)] hover:opacity-90"
             >
-              <Link to="/whitelist">
-                Join the whitelist
+              <Link to="/mint">
+                Mint {TICKER} now
                 <ArrowRight className="ml-1 size-4" />
               </Link>
             </Button>
@@ -133,9 +131,9 @@ function LiveStats() {
             sub: `${formatTokenAmount(LOT_SIZE)} per lot`,
           },
           {
-            label: "Open rate",
+            label: "Mint rate",
             value: `${lamportsToSol(OPEN_RATE_LAMPORTS)} SOL`,
-            sub: `${lamportsToSol(APPROVED_RATE_LAMPORTS)} SOL approved`,
+            sub: `per lot · no allowlist`,
           },
           {
             label: "Lots",
@@ -221,46 +219,13 @@ function Rates() {
           <SectionHeading
             kicker="02 — Rates & caps"
             title="What a lot costs"
-            description={`${TICKER} is minted in lots of ${formatTokenAmount(LOT_SIZE)}. Two prices; caps are per wallet across every invoice you open.`}
+            description={`${TICKER} is minted in lots of ${formatTokenAmount(LOT_SIZE)}. One open price; caps are per wallet across every invoice you open.`}
           />
         </motion.div>
 
-        <div className="mt-12 grid gap-4 md:grid-cols-2">
-          <motion.div
-            {...fadeUp}
-            className="border-sol-gradient relative rounded-2xl p-[1px]"
-          >
-            <div className="h-full rounded-2xl bg-card p-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Approved</h3>
-                <GradientBadge>Whitelist only</GradientBadge>
-              </div>
-              <p className="mt-4 font-mono-tabular text-3xl font-semibold text-primary">
-                {lamportsToSol(APPROVED_RATE_LAMPORTS)} SOL
-                <span className="ml-1 text-sm font-normal text-muted-foreground">
-                  / lot
-                </span>
-              </p>
-              <ul className="mt-5 space-y-2.5 text-sm text-muted-foreground">
-                <li className="flex gap-2">
-                  <Check className="mt-0.5 size-4 text-primary" />
-                  Up to {APPROVED_MAX_LOTS} lots ·{" "}
-                  {formatTokenAmount(APPROVED_MAX_LOTS * LOT_SIZE)} {TICKER}
-                </li>
-                <li className="flex gap-2">
-                  <Check className="mt-0.5 size-4 text-primary" />
-                  Max spend {lamportsToSol(APPROVED_MAX_LOTS * APPROVED_RATE_LAMPORTS)} SOL
-                </li>
-                <li className="flex gap-2">
-                  <Check className="mt-0.5 size-4 text-primary" />
-                  Granted by hand after the whitelist steps — it does not reserve supply
-                </li>
-              </ul>
-            </div>
-          </motion.div>
-
+        <div className="mt-12 grid gap-4 md:grid-cols-1 max-w-2xl">
           <motion.div {...fadeUp} className="rounded-2xl border border-border/70 bg-card p-6">
-            <h3 className="text-lg font-semibold">Open</h3>
+            <h3 className="text-lg font-semibold">Open mint</h3>
             <p className="mt-4 font-mono-tabular text-3xl font-semibold">
               {lamportsToSol(OPEN_RATE_LAMPORTS)} SOL
               <span className="ml-1 text-sm font-normal text-muted-foreground">
@@ -287,11 +252,7 @@ function Rates() {
 
         <p className="mt-6 text-xs text-muted-foreground">
           Protocol limit: {formatTokenAmount(MAX_MINT_PER_TX)} {TICKER} per
-          single mint. Approved is granted after the{" "}
-          <Link to="/whitelist" className="text-primary underline underline-offset-2">
-            whitelist steps
-          </Link>
-          ; it is a price, not a reservation.
+          single mint. No allowlist, no approval wait — first come, first served until supply is gone.
         </p>
       </div>
     </section>
@@ -638,10 +599,8 @@ function FinalCta() {
           </h2>
           <p className="mt-4 max-w-lg text-sm leading-6 text-muted-foreground sm:text-base">
             {formatTokenAmount(TOTAL_SUPPLY)} {TICKER}.{" "}
-            {formatTokenAmount(TOTAL_LOTS)} lots. Whitelisted wallets mint at
-            {" "}
-            {lamportsToSol(APPROVED_RATE_LAMPORTS)} SOL per lot — everyone else
-            pays {lamportsToSol(OPEN_RATE_LAMPORTS)}. When supply is gone, the
+            {formatTokenAmount(TOTAL_LOTS)} lots at{" "}
+            {lamportsToSol(OPEN_RATE_LAMPORTS)} SOL per lot — no allowlist. When supply is gone, the
             market opens and the mint never comes back.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
@@ -650,8 +609,8 @@ function FinalCta() {
               size="lg"
               className="bg-sol-gradient font-semibold text-[#04101a] shadow-[0_0_28px_rgba(20,241,149,0.35)] hover:opacity-90"
             >
-              <Link to="/whitelist">
-                Apply for the whitelist
+              <Link to="/mint">
+                Mint {TICKER} now
                 <ArrowRight className="ml-1 size-4" />
               </Link>
             </Button>

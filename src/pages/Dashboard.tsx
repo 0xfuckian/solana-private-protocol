@@ -13,7 +13,8 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { api } from "@/convex/_generated/api";
 import {
   LOT_SIZE,
-  RATE_TIERS,
+  OPEN_MAX_LOTS,
+  OPEN_RATE_LAMPORTS,
   RELAYER_FEE_LAMPORTS,
   TICKER,
   TOTAL_SUPPLY,
@@ -730,8 +731,6 @@ function DashboardInner() {
     );
   }
 
-  const approved = wallet.approved;
-
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -766,9 +765,9 @@ function DashboardInner() {
           sub={`${formatTokenAmount(wallet.lotsMinted * LOT_SIZE)} ${TICKER}`}
         />
         <Stat
-          label="Rate tier"
-          value={approved ? "Approved" : "Open"}
-          sub={`${lamportsToSol(RATE_TIERS[approved ? "approved" : "open"].perLotLamports)} SOL per lot · ${RATE_TIERS[approved ? "approved" : "open"].maxLots.toLocaleString()}-lot cap`}
+          label="Mint rate"
+          value="Open"
+          sub={`${lamportsToSol(OPEN_RATE_LAMPORTS)} SOL per lot · ${OPEN_MAX_LOTS.toLocaleString()}-lot cap`}
         />
       </div>
 

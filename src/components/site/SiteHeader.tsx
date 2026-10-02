@@ -206,7 +206,6 @@ export function SiteFooter() {
           </div>
         </div>
         <nav className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
-          <Link to="/whitelist" className="hover:text-foreground">Whitelist</Link>
           <Link to="/mint" className="hover:text-foreground">Mint</Link>
           <Link to="/market" className="hover:text-foreground">Market</Link>
           <Link to="/vault" className="hover:text-foreground">Vault</Link>
