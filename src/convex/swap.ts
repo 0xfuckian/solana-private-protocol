@@ -17,6 +17,7 @@ import { sha256Hex } from "./sha256";
 import {
   MIN_SWAP_LAMPORTS,
   MIN_SWAP_TOKENS,
+  TICKER,
   hexHashOf,
   quoteSwapSolForTokens,
   quoteSwapTokensForSol,
@@ -138,7 +139,7 @@ export const swapSolForTokens = mutation({
     if (quote.outAmount !== expectedTokensOut) throw new Error("Pool quote changed. Refresh the quote and seal a new output note.");
     if (quote.outAmount < minTokensOut) {
       throw new Error(
-        `Slippage guard: this trade now yields ${quote.outAmount.toLocaleString()} SOLZK, below your ${minTokensOut.toLocaleString()} minimum.`,
+        `Slippage guard: this trade now yields ${quote.outAmount.toLocaleString()} ${TICKER}, below your ${minTokensOut.toLocaleString()} minimum.`,
       );
     }
 
@@ -223,7 +224,7 @@ export const swapTokensForSol = mutation({
       throw new Error("The private swap pool is not seeded yet.");
     }
     if (!Number.isInteger(tokensIn) || tokensIn < MIN_SWAP_TOKENS) {
-      throw new Error(`Minimum swap is ${MIN_SWAP_TOKENS.toLocaleString()} SOLZK.`);
+      throw new Error(`Minimum swap is ${MIN_SWAP_TOKENS.toLocaleString()} ${TICKER}.`);
     }
     assertNullifiers(nullifiers);
     for (const n of nullifiers) {

@@ -1,4 +1,4 @@
-import { ADDRESS_LEN, encodePayLink } from "./protocol";
+import { ADDRESS_LEN, TICKER, encodePayLink } from "./protocol";
 import { sealedStatement } from "./spend";
 import { assertUnits, mulDivFloor } from "./safety";
 
@@ -36,7 +36,7 @@ export function parsePayrollCsv(csv: string): PayrollRow[] {
     if (payee.length !== ADDRESS_LEN || !/^[1-9A-HJ-NP-Za-km-z]+$/.test(payee)) throw new Error(`Row ${index + 2}: invalid shielded address.`);
     if (seen.has(payee)) throw new Error(`Row ${index + 2}: duplicate payee.`);
     seen.add(payee);
-    if (!/^\d+$/.test(rawAmount)) throw new Error(`Row ${index + 2}: amount must be whole SOLZK tokens.`);
+    if (!/^\d+$/.test(rawAmount)) throw new Error(`Row ${index + 2}: amount must be whole ${TICKER} tokens.`);
     const amount = Number(rawAmount);
     assertUnits(amount);
     if (new TextEncoder().encode(memo).length > 120) throw new Error(`Row ${index + 2}: memo exceeds 120 bytes.`);

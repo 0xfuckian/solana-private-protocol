@@ -1,14 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 96.81 96.81">
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 96 96" role="img" aria-label="Kilnen">
   <defs>
-    <linearGradient id="g" x1="0" y1="96.81" x2="96.81" y2="0" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#14F195"/>
-      <stop offset="0.5" stop-color="#43B4CA"/>
-      <stop offset="1" stop-color="#9945FF"/>
+    <linearGradient id="kilnen-ring" x1="0" y1="96" x2="96" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7C2D0B"/>
+      <stop offset="0.45" stop-color="#F2610C"/>
+      <stop offset="1" stop-color="#FFD37A"/>
     </linearGradient>
   </defs>
-  <rect width="96.81" height="96.81" rx="20" fill="url(#g)"/>
-  <g fill="#070b14">
-    <path d="M30 24h27.5a12 12 0 0 1 0 24H30z" opacity="0.92"/>
-    <path d="M39.31 48.81H66.8a12 12 0 0 1 0 24H39.31z" opacity="0.92"/>
-  </g>
+  <rect width="96" height="96" rx="22" fill="#08090C"/>
+  <circle cx="48" cy="48" r="30" fill="none" stroke="url(#kilnen-ring)" stroke-width="9"/>
+  <circle cx="52" cy="44" r="20" fill="#08090C"/>
+  <circle cx="66" cy="30" r="3.4" fill="#FFD37A"/>
 </svg>

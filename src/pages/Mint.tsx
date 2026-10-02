@@ -192,13 +192,13 @@ function WalletSetup({ slk }: { slk: ReturnType<typeof useSolzk> }) {
               type="checkbox"
               checked={restored}
               onChange={(e) => setRestored(e.target.checked)}
-              className="mt-0.5 size-4 accent-[#14f195]"
+              className="mt-0.5 size-4 accent-primary"
             />
             I wrote the words down offline. I understand that without them,
             nothing can be recovered — by anyone.
           </label>
           <Button
-            className="mt-5 w-full bg-sol-gradient font-semibold text-[#04101a] hover:opacity-90"
+            className="mt-5 w-full bg-sol-gradient font-semibold text-primary-foreground hover:opacity-90"
             disabled={!restored}
             onClick={() => {
               setWords(null);
@@ -291,7 +291,7 @@ function WalletSetup({ slk }: { slk: ReturnType<typeof useSolzk> }) {
           </div>
 
           <Button
-            className="w-full bg-sol-gradient font-semibold text-[#04101a] hover:opacity-90"
+            className="w-full bg-sol-gradient font-semibold text-primary-foreground hover:opacity-90"
             disabled={busy || !password}
             onClick={() => {
               if (mode === "unlock") handleUnlock();
@@ -368,9 +368,9 @@ function RegisterCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Registration failed";
-      if (msg.includes("already holds an SOLZK wallet")) {
+      if (msg.includes(`already holds a ${TICKER} wallet`)) {
         toast.error(
-          "This account already holds an SOLZK wallet — one account, one wallet. Open the dashboard to see it.",
+          `This account already holds a ${TICKER} wallet — one account, one wallet. Open the dashboard to see it.`,
         );
       } else {
         toast.error(msg);
@@ -387,7 +387,7 @@ function RegisterCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
           <Wallet className="size-6" />
         </div>
         <h2 className="mt-4 text-lg font-semibold">
-          {registered ? "You hold an SOLZK wallet" : "Register your wallet"}
+          {registered ? `You hold a ${TICKER} wallet` : "Register your wallet"}
         </h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           {registered
@@ -396,7 +396,7 @@ function RegisterCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
         </p>
         {!registered && (
           <Button
-            className="mt-6 w-full bg-sol-gradient font-semibold text-[#04101a] hover:opacity-90"
+            className="mt-6 w-full bg-sol-gradient font-semibold text-primary-foreground hover:opacity-90"
             disabled={busy}
             onClick={register}
           >
@@ -652,7 +652,7 @@ function MintForm({
               </div>
 
               <Button
-                className="mt-6 w-full bg-sol-gradient py-6 font-semibold text-[#04101a] hover:opacity-90"
+                className="mt-6 w-full bg-sol-gradient py-6 font-semibold text-primary-foreground hover:opacity-90"
                 disabled={busy || lots < 1 || lots > maxLotsNow}
                 onClick={open}
               >
@@ -764,7 +764,7 @@ function MintForm({
               </tr>
               <tr className="border-b border-border/40">
                 <td className="px-5 py-3 font-semibold text-foreground">Relayer</td>
-                <td className="px-5 py-3">0.00005 SOL flat, or fee-in-note from 25 SOLZK</td>
+                <td className="px-5 py-3">0.00005 SOL flat, or fee-in-note from 25 {TICKER}</td>
                 <td className="px-5 py-3 text-muted-foreground">Relayer fee vault (public, in explorer)</td>
               </tr>
               <tr>
@@ -948,7 +948,7 @@ function InvoiceFlow({
 
             {!expired ? (
               <Button
-                className="w-full bg-sol-gradient py-6 font-semibold text-[#04101a] hover:opacity-90"
+                className="w-full bg-sol-gradient py-6 font-semibold text-primary-foreground hover:opacity-90"
                 disabled={paying}
                 onClick={async () => {
                   setPaying(true);
@@ -1029,8 +1029,8 @@ function InvoiceFlow({
   return (
     <Card className="border-sol-gradient mx-auto max-w-2xl">
       <CardContent className="p-8 text-center">
-        <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-sol-gradient shadow-[0_0_28px_rgba(20,241,149,0.4)]">
-          <Sparkles className="size-6 text-[#04101a]" />
+        <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-sol-gradient shadow-[0_0_28px_rgba(242,97,12,0.4)]">
+          <Sparkles className="size-6 text-primary-foreground" />
         </div>
         <h2 className="mt-4 text-lg font-semibold">
           {formatTokenAmount(invoice.lots * LOT_SIZE)} {TICKER} is in your
@@ -1049,7 +1049,7 @@ function InvoiceFlow({
         )}
         <div className="mt-6 flex justify-center gap-3">
           <Button
-            className="bg-sol-gradient font-semibold text-[#04101a] hover:opacity-90"
+            className="bg-sol-gradient font-semibold text-primary-foreground hover:opacity-90"
             onClick={onDone}
           >
             Mint more
@@ -1141,7 +1141,7 @@ export default function MintPage() {
   return (
     <RequireAuth
       title="Sign in to mint"
-      description="Your SOLZK wallet lives inside your account. Sign in to create or unlock it."
+      description={`Your ${TICKER} wallet lives inside your account. Sign in to create or unlock it.`}
     >
       <SiteLayout>
         <MintPageInner />

@@ -1,5 +1,5 @@
 /**
- * SOL-ZK shielded wallet — everything runs in the browser.
+ * Kilnen shielded wallet — everything runs in the browser.
  *
  * Model (mirrors a simplified Sapling-style scheme):
  *  - 24-word seed → deterministic spend key (SHA-256 chain over the words).

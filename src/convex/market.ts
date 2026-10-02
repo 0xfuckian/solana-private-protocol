@@ -15,7 +15,7 @@ import {
   routeFee,
 } from "./backendHelpers";
 import { sha256Hex } from "./sha256";
-import { ENVELOPE_TRANSFER_BYTES, MARKET_FEE_BPS, RELAYER_FEE_LAMPORTS, hexHashOf } from "../lib/protocol";
+import { ENVELOPE_TRANSFER_BYTES, MARKET_FEE_BPS, RELAYER_FEE_LAMPORTS, TICKER, hexHashOf } from "../lib/protocol";
 import { CIPHERTEXT_B64_LEN, buildEnvelope, parseSealed } from "./protocol";
 
 function nowSlot(genesisMs: number): number {
@@ -153,7 +153,7 @@ export const placeOrder = mutation({
     assertUnits(priceLamportsPerKilo, "Price");
     assertUnits(amountTokens);
     if (priceLamportsPerKilo <= 0) throw new Error("Price must be positive.");
-    if (amountTokens < 1_000) throw new Error("Minimum order is 1,000 SOLZK.");
+    if (amountTokens < 1_000) throw new Error(`Minimum order is 1,000 ${TICKER}.`);
 
     const id = await ctx.db.insert("orders", {
       makerWalletId: wallet._id,

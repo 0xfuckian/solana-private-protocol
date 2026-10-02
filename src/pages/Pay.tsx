@@ -6,6 +6,7 @@ import { PageShell, SiteLayout } from "@/components/site/Layout";
 import { RequireAuth } from "@/components/RequireAuth";
 import {
   RELAYER_FEE_LAMPORTS,
+  SITE_NAME,
   TICKER,
   decodePayLink,
   formatTokenAmount,
@@ -110,7 +111,7 @@ function PayInner() {
             No payment in this link
           </h2>
           <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-            A SOL-ZK pay link carries the recipient, amount and memo in the
+            A {SITE_NAME} pay link carries the recipient, amount and memo in the
             URL fragment after <code className="font-mono-tabular">#</code> —
             it never touches a server, but this one is missing or malformed.
             You can create your own from the dashboard.
@@ -131,7 +132,7 @@ function PayInner() {
         <CardContent className="p-8 text-center">
           <Wallet className="mx-auto size-8 text-primary" />
           <h2 className="mt-4 text-lg font-semibold">
-            You need a SOL-ZK wallet
+            You need a {SITE_NAME} wallet
           </h2>
           <p className="mx-auto mt-2 text-sm leading-6 text-muted-foreground">
             Create one on the mint page — about a minute — then come back to

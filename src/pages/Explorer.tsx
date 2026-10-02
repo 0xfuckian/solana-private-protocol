@@ -205,7 +205,7 @@ export default function Explorer() {
         />
       </div>
 
-      <div className="mb-6 rounded-xl border border-border bg-card p-4 text-sm"><p className="font-medium">Separate SOLZK fee reserves</p><p className="mt-2 font-mono text-primary">Treasury {formatTokenAmount(state?.treasuryTokens ?? 0)} · vault rewards {formatTokenAmount(state?.vaultFeeTokens ?? 0)} SOLZK</p><p className="mt-2 text-xs text-muted-foreground">Retained token reserves; not SOL balances or currently claimable rewards. Historical misclassified fees have not been migrated.</p></div>
+      <div className="mb-6 rounded-xl border border-border bg-card p-4 text-sm"><p className="font-medium">Separate {TICKER} fee reserves</p><p className="mt-2 font-mono text-primary">Treasury {formatTokenAmount(state?.treasuryTokens ?? 0)} · vault rewards {formatTokenAmount(state?.vaultFeeTokens ?? 0)} {TICKER}</p><p className="mt-2 text-xs text-muted-foreground">Retained token reserves; not SOL balances or currently claimable rewards. Historical misclassified fees have not been migrated.</p></div>
       {detail?.envelope ? (
         <Card className="border-sol-gradient mb-8">
           <CardContent className="p-6">
@@ -215,7 +215,7 @@ export default function Explorer() {
                   className={`flex size-10 items-center justify-center rounded-xl ${
                     detail.envelope.kind === "mint"
                       ? "bg-primary/10 text-primary"
-                      : "bg-[#9945FF]/15 text-[#c9b4ff]"
+                      : "bg-tier-obsidian/15 text-tier-obsidian"
                   }`}
                 >
                   {detail.envelope.kind === "mint" ? (
@@ -259,7 +259,7 @@ export default function Explorer() {
               />
               <Stat
                 label="Protocol fee"
-                value={detail.envelope.feeDenomination === "SOLZK" ? `${formatTokenAmount(detail.envelope.feeTokens ?? 0)} SOLZK` : `${lamportsToSol(detail.envelope.feeLamports)} demo SOL`}
+                value={detail.envelope.feeDenomination === "SOLZK" ? `${formatTokenAmount(detail.envelope.feeTokens ?? 0)} ${TICKER}` : `${lamportsToSol(detail.envelope.feeLamports)} demo SOL`}
                 sub={
                   detail.envelope.feeInNote
                     ? "relayer paid from the note itself — sender spent no SOL"
@@ -357,7 +357,7 @@ export default function Explorer() {
                           className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                             e.kind === "mint"
                               ? "bg-primary/10 text-primary"
-                              : "bg-[#9945FF]/15 text-[#c9b4ff]"
+                              : "bg-tier-obsidian/15 text-tier-obsidian"
                           }`}
                         >
                           {e.kind}
@@ -368,7 +368,7 @@ export default function Explorer() {
                       <td className="px-6 py-3">{e.slot.toLocaleString()}</td>
                       <td className="px-6 py-3">{e.payloadSize} B</td>
                       <td className="px-6 py-3">
-                        {e.feeDenomination === "SOLZK" ? `${formatTokenAmount(e.feeTokens ?? e.feeLamports)} SOLZK` : `${lamportsToSol(e.feeLamports)} demo SOL`}
+                        {e.feeDenomination === "SOLZK" ? `${formatTokenAmount(e.feeTokens ?? e.feeLamports)} ${TICKER}` : `${lamportsToSol(e.feeLamports)} demo SOL`}
                         <p className="mt-1 text-[10px] text-muted-foreground">Vault {e.feeSplit.vault} / treasury {e.feeSplit.treasury} {e.feeDenomination}</p>
                         {e.decodedMint && <p className="mt-1 text-[10px] text-muted-foreground">Price {lamportsToSol(e.decodedMint.priceUnits)} demo SOL</p>}
                       </td>
@@ -434,7 +434,7 @@ export default function Explorer() {
                             b.kind === "buyback"
                               ? "bg-primary/10 text-primary"
                               : b.kind === "redeem"
-                                ? "bg-[#9945FF]/15 text-[#c9b4ff]"
+                                ? "bg-tier-obsidian/15 text-tier-obsidian"
                                 : "bg-secondary text-foreground"
                           }`}
                         >
@@ -509,7 +509,7 @@ export default function Explorer() {
                           className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                             s.direction === "sol_to_tokens"
                               ? "bg-primary/10 text-primary"
-                              : "bg-[#9945FF]/15 text-[#c9b4ff]"
+                              : "bg-tier-obsidian/15 text-tier-obsidian"
                           }`}
                         >
                           {s.direction === "sol_to_tokens" ? `SOL → ${TICKER}` : `${TICKER} → SOL`}
@@ -582,7 +582,7 @@ export default function Explorer() {
                           className={`rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize ${
                             a.kind === "shield"
                               ? "bg-primary/10 text-primary"
-                              : "bg-[#9945FF]/15 text-[#c9b4ff]"
+                              : "bg-tier-obsidian/15 text-tier-obsidian"
                           }`}
                         >
                           {a.kind}
@@ -623,7 +623,7 @@ export default function Explorer() {
         </Card>
         <Card>
           <CardContent className="p-6">
-            <div className="flex items-center gap-2 text-[#c9b4ff]">
+            <div className="flex items-center gap-2 text-tier-obsidian">
               <ShieldCheck className="size-4" />
               <p className="text-sm font-semibold">Not protected in this demo</p>
             </div>

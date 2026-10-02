@@ -1,6 +1,11 @@
 /**
- * SOL-ZK — a private ledger that settles on Solana.
+ * Kilnen — a private ledger that settles on Solana.
  * Protocol constants shared by frontend and backend (pure data, no imports).
+ *
+ * NOTE: brand strings (SITE_NAME, TICKER) are display-only. Never rename the
+ * `solzk-*` hash domain separators, the `SOLZK|` envelope wire prefix, or the
+ * `solzk.*` storage keys — those are committed into hashes and stored data,
+ * so changing them would silently invalidate existing notes and links.
  */
 
 import { assertUnits, mulDivFloor } from "./safety";
@@ -8,8 +13,8 @@ import { assertUnits, mulDivFloor } from "./safety";
 /** Legacy simulation scale. Do not use for Solana RPC amounts. */
 export const SOLANA_LAMPORTS_PER_SOL = 1_000_000_000;
 
-export const SITE_NAME = "SOL-ZK";
-export const TICKER = "SOLZK";
+export const SITE_NAME = "Kilnen";
+export const TICKER = "KLN";
 
 /** Total supply: 10% of Solana's ~2.1B circulating SOL base. */
 export const TOTAL_SUPPLY = 210_000_000;

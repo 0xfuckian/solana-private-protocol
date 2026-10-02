@@ -13,7 +13,7 @@ export default function NotFound() {
       className="flex min-h-screen flex-col bg-sol-glow"
     >
       <div className="flex flex-1 flex-col items-center justify-center px-4">
-        <div className="w-full max-w-md rounded-xl border border-border/70 bg-card p-8 text-center shadow-[0_0_60px_-20px_rgba(20,241,149,0.3)]">
+        <div className="w-full max-w-md rounded-xl border border-border/70 bg-card p-8 text-center shadow-[0_0_60px_-20px_rgba(242,97,12,0.3)]">
           <span className="mx-auto flex size-12 items-center justify-center rounded-xl bg-sol-gradient">
             <Lock className="size-5 text-[#04101a]" strokeWidth={2.5} />
           </span>

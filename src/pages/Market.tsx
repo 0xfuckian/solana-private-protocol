@@ -90,7 +90,7 @@ function PriceHeader({ book }: { book: Book }) {
         label="Last trade"
         value={fmt(book.lastPrice)}
         accent
-        sub="per 1,000 SOLZK — the reference price"
+        sub={`per 1,000 ${TICKER} — the reference price`}
       />
       <Stat
         label="Best bid"
@@ -183,7 +183,7 @@ function OrderTicket() {
                 side === s
                   ? s === "buy"
                     ? "bg-primary/15 text-primary"
-                    : "bg-[#9945FF]/20 text-[#c9b4ff]"
+                    : "bg-tier-obsidian/20 text-tier-obsidian"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -311,7 +311,7 @@ function SwapCard() {
             <Shuffle className="size-4 text-primary" />
           </div>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            A constant-product pool owned by the protocol — swap SOLZK for
+            A constant-product pool owned by the protocol — swap {TICKER} for
             SOL and back without an order book, without unshielding. The
             devnet reserves need seeding once.
           </p>
@@ -585,12 +585,12 @@ function FillRow({
     <div className="relative overflow-hidden rounded-lg border border-border/60 px-3 py-2">
       <div
         className={`absolute inset-y-0 left-0 ${
-          side === "buy" ? "bg-primary/10" : "bg-[#9945FF]/15"
+          side === "buy" ? "bg-primary/10" : "bg-tier-obsidian/15"
         }`}
         style={{ width: `${(row.price / maxDepth) * 100}%` }}
       />
       <div className="relative flex items-center justify-between gap-2 font-mono-tabular text-sm">
-        <span className={side === "buy" ? "text-primary" : "text-[#c9b4ff]"}>
+        <span className={side === "buy" ? "text-primary" : "text-tier-obsidian"}>
           {lamportsToSol(row.price)}
         </span>
         <span>{formatTokenAmount(row.remaining)}</span>
@@ -811,7 +811,7 @@ function MarketInner() {
                 )}
               </div>
               <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[#c9b4ff]">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-tier-obsidian">
                   Asks
                 </p>
                 {book.asks.length === 0 ? (
@@ -853,7 +853,7 @@ function MarketInner() {
                     <div>
                       <span
                         className={
-                          o.side === "buy" ? "text-primary" : "text-[#c9b4ff]"
+                          o.side === "buy" ? "text-primary" : "text-tier-obsidian"
                         }
                       >
                         {o.side.toUpperCase()}

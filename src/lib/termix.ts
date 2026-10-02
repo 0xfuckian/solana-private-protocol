@@ -1,5 +1,5 @@
 /**
- * SOL-ZK agent SDK (TermiX integration surface).
+ * Kilnen agent SDK (TermiX integration surface).
  *
  * Pure client-side helpers only: pay-link codec, swap quotes, fee math.
  * There is intentionally NO proof endpoint that accepts private keys:

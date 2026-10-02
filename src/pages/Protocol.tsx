@@ -266,7 +266,7 @@ export default function Protocol() {
                 </tr>
                 <tr className="border-b border-border/40">
                   <td className="px-4 py-3 font-semibold text-foreground">Relayer</td>
-                  <td className="px-4 py-3">0.00005 SOL flat or fee-in-note from 25 SOLZK</td>
+                  <td className="px-4 py-3">0.00005 SOL flat or fee-in-note from 25 {TICKER}</td>
                   <td className="px-4 py-3 text-muted-foreground">Relayer fee vault (public)</td>
                 </tr>
                 <tr className="border-b border-border/40">
@@ -513,7 +513,7 @@ export default function Protocol() {
               ],
               [
                 "Fee buyback-and-burn",
-                "The keeper sweeps the treasury fee vault, buys SOLZK out of protocol liquidity and burns it. Public, permissionless, deflationary — the burn feed lives in the explorer.",
+                `The keeper sweeps the treasury fee vault, buys ${TICKER} out of protocol liquidity and burns it. Public, permissionless, deflationary — the burn feed lives in the explorer.`,
                 "/vault",
                 "Run the keeper sweep",
               ],
@@ -537,7 +537,7 @@ export default function Protocol() {
               ],
               [
                 "Burn-to-discount tiers",
-                "Burn SOLZK to set a permanent public fee tier — Ember −25%, Onyx −50%, Obsidian −75%. Burned tokens leave the supply forever.",
+                `Burn ${TICKER} to set a permanent public fee tier — Ember −25%, Onyx −50%, Obsidian −75%. Burned tokens leave the supply forever.`,
                 "/dashboard",
                 "Burn for a tier",
               ],
@@ -549,7 +549,7 @@ export default function Protocol() {
               ],
               [
                 "Private swap",
-                "A constant-product pool owned by the protocol: swap SOLZK for SOL and back without an order book, without unshielding. The SOL leg is verified; the shielded leg is proven, never read.",
+                `A constant-product pool owned by the protocol: swap ${TICKER} for SOL and back without an order book, without unshielding. The SOL leg is verified; the shielded leg is proven, never read.`,
                 "/market",
                 "Try the private swap",
               ],

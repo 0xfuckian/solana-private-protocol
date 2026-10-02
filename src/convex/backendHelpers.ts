@@ -32,7 +32,7 @@ export async function getWalletForUserOrThrow(
   const wallet = await getWalletForUser(ctx as QueryCtx, userId);
   if (!wallet)
     throw new Error(
-      "No SOLZK wallet found — create one on the mint page.",
+      `No ${TICKER} wallet found — create one on the mint page.`,
     );
   return wallet;
 }

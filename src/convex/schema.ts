@@ -47,7 +47,7 @@ const schema = defineSchema(
     merkleTreeNodes: defineTable({ level: v.number(), index: v.number(), hash: v.string() }).index("by_position", ["level", "index"]),
     merkleRoots: defineTable({ root: v.string(), leafCount: v.number(), slot: v.number(), createdAt: v.number() }).index("by_created", ["createdAt"]).index("by_root", ["root"]),
 
-    // ---- SOL-ZK protocol ---------------------------------------------------
+    // ---- Kilnen protocol ---------------------------------------------------
 
     // Singleton: key === "global"
     protocolState: defineTable({

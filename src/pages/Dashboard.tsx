@@ -16,6 +16,7 @@ import {
   OPEN_MAX_LOTS,
   OPEN_RATE_LAMPORTS,
   RELAYER_FEE_LAMPORTS,
+  SITE_NAME,
   TICKER,
   TOTAL_SUPPLY,
   discountTierForBurned,
@@ -533,7 +534,7 @@ function RequestPaymentCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
         </div>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
           Generate a pay link: {TICKER} amount and memo encoded in the URL
-          fragment — it never touches a server. Anyone with a SOL-ZK wallet
+          fragment — it never touches a server. Anyone with a {SITE_NAME} wallet
           opens the link and pays in one tap.
         </p>
         <div className="mt-4 flex gap-3">
@@ -926,7 +927,7 @@ function DashboardInner() {
                             inv.status === "minted"
                               ? "text-primary"
                               : inv.status === "seen"
-                                ? "text-[#c9b4ff]"
+                                ? "text-tier-obsidian"
                                 : "text-muted-foreground"
                           }
                         >

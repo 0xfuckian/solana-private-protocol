@@ -1,5 +1,5 @@
 /**
- * SOL-ZK v2 note encryption — the production-shape scheme.
+ * Kilnen v2 note encryption — the production-shape scheme.
  *
  * Legacy v1 notes derive their AES-GCM key as SHA-256("solzk-view:" +
  * address + ":" + ephemeral): anyone holding the (public) address can

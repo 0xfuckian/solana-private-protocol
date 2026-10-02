@@ -34,6 +34,7 @@ import {
   transferFeeTokens,
   RELAYER_FEE_LAMPORTS,
   RELAYER_FEE_NOTE_TOKENS,
+  TICKER,
   type RateTier,
   assetBySymbol,
   discountTierForBurned,
@@ -254,7 +255,7 @@ export const registerWallet = mutation({
       .first();
     if (existing) {
       throw new Error(
-        "This account already holds a SOLZK wallet. One account, one wallet.",
+        `This account already holds a ${TICKER} wallet. One account, one wallet.`,
       );
     }
     const byAddress = await ctx.db
@@ -633,7 +634,7 @@ export const sendPrivate = mutation({
       relayerFeeTokens = dynamicRelayerFee(args.amount);
       if (args.amount - transferFee - relayerFeeTokens <= 0) {
         throw new Error(
-          `Amount too small — fee-in-note needs room for the ${RELAYER_FEE_NOTE_TOKENS} SOLZK relayer fee on top of the protocol fee.`,
+          `Amount too small — fee-in-note needs room for the ${RELAYER_FEE_NOTE_TOKENS} ${TICKER} relayer fee on top of the protocol fee.`,
         );
       }
     } else if (wallet.fundingLamports < RELAYER_FEE_LAMPORTS) {

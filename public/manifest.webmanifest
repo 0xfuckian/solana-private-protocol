@@ -1,11 +1,11 @@
 {
-  "name": "freebuff.com application",
-  "short_name": "freebuff.com",
-  "description": "freebuff.com application",
+  "name": "Kilnen",
+  "short_name": "Kilnen",
+  "description": "Kilnen — private settlement on Solana. Research simulation.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#000000",
+  "background_color": "#08090c",
+  "theme_color": "#08090c",
   "icons": [
     {
       "src": "/logo.svg",

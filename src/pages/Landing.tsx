@@ -9,6 +9,7 @@ import {
   MAX_MINT_PER_TX,
   OPEN_MAX_LOTS,
   OPEN_RATE_LAMPORTS,
+  SITE_NAME,
   TICKER,
   TOTAL_LOTS,
   TOTAL_SUPPLY,
@@ -67,6 +68,10 @@ function Hero() {
             Research simulation · Slot {slot.toLocaleString()}
           </GradientBadge>
 
+          <p className="text-xs font-semibold uppercase tracking-[0.4em] text-ember-400">
+            {SITE_NAME}
+          </p>
+
           <h1 className="max-w-3xl text-4xl font-semibold leading-[1.08] tracking-tight sm:text-6xl">
             Private finance.{" "}
             <span className="text-sol-gradient sol-shimmer">
@@ -85,7 +90,7 @@ function Hero() {
             <Button
               asChild
               size="lg"
-              className="bg-sol-gradient text-[#04101a] font-semibold shadow-[0_0_28px_rgba(20,241,149,0.35)] hover:opacity-90"
+              className="bg-sol-gradient text-primary-foreground font-semibold shadow-[0_0_28px_rgba(242,97,12,0.35)] hover:opacity-90"
             >
               <Link to="/mint">
                 Mint {TICKER} now
@@ -374,7 +379,7 @@ function MintFlow() {
                 className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
                   s.who === "you"
                     ? "bg-primary/10 text-primary"
-                    : "bg-[#9945FF]/15 text-[#c9b4ff]"
+                    : "bg-tier-obsidian/15 text-tier-obsidian"
                 }`}
               >
                 {s.who}
@@ -452,7 +457,7 @@ function LedgerSection() {
                   {line.startsWith("note") ? (
                     <span className="size-1.5 rounded-full bg-primary" />
                   ) : (
-                    <span className="size-1.5 rounded-full bg-[#9945FF]" />
+                    <span className="size-1.5 rounded-full bg-tier-obsidian" />
                   )}
                 </div>
               ))}
@@ -590,8 +595,8 @@ function FinalCta() {
     <section className="bg-sol-glow">
       <div className="mx-auto flex w-full max-w-6xl flex-col items-center px-4 py-24 text-center sm:px-6">
         <motion.div {...fadeUp} className="flex flex-col items-center">
-          <div className="flex size-14 items-center justify-center rounded-2xl bg-sol-gradient shadow-[0_0_36px_rgba(20,241,149,0.4)]">
-            <KeyRound className="size-6 text-[#04101a]" />
+          <div className="flex size-14 items-center justify-center rounded-2xl bg-sol-gradient shadow-[0_0_36px_rgba(242,97,12,0.4)]">
+            <KeyRound className="size-6 text-primary-foreground" />
           </div>
           <h2 className="mt-6 max-w-xl text-3xl font-semibold tracking-tight sm:text-4xl">
             The mint is coming.{" "}
@@ -607,7 +612,7 @@ function FinalCta() {
             <Button
               asChild
               size="lg"
-              className="bg-sol-gradient font-semibold text-[#04101a] shadow-[0_0_28px_rgba(20,241,149,0.35)] hover:opacity-90"
+              className="bg-sol-gradient font-semibold text-primary-foreground shadow-[0_0_28px_rgba(242,97,12,0.35)] hover:opacity-90"
             >
               <Link to="/mint">
                 Mint {TICKER} now

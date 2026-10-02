@@ -37,8 +37,19 @@ const NAV = [
 function Logo() {
   return (
     <Link to="/" className="flex items-center gap-2.5">
-      <span className="relative flex size-8 items-center justify-center rounded-lg bg-sol-gradient shadow-[0_0_18px_rgba(20,241,149,0.35)]">
-        <Lock className="size-4 text-[#04101a]" strokeWidth={2.5} />
+      <span className="relative flex size-8 items-center justify-center rounded-lg bg-obsidian-900 ring-1 ring-ember-500/30 shadow-[0_0_18px_rgba(242,97,12,0.4)]">
+        <svg viewBox="0 0 96 96" className="size-6" aria-hidden="true">
+          <defs>
+            <linearGradient id="kilnen-logo-ring" x1="0" y1="96" x2="96" y2="0" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stopColor="#7C2D0B" />
+              <stop offset="0.45" stopColor="#F2610C" />
+              <stop offset="1" stopColor="#FFD37A" />
+            </linearGradient>
+          </defs>
+          <circle cx="48" cy="48" r="30" fill="none" stroke="url(#kilnen-logo-ring)" strokeWidth="11" />
+          <circle cx="52" cy="44" r="20" fill="#0b0d12" />
+          <circle cx="66" cy="30" r="3.4" fill="#FFD37A" />
+        </svg>
       </span>
       <span className="text-[17px] font-semibold tracking-tight text-foreground font-display">
         {SITE_NAME}
@@ -196,7 +207,7 @@ export function SiteFooter() {
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 sm:px-6 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2.5">
           <span className="flex size-7 items-center justify-center rounded-md bg-sol-gradient">
-            <Lock className="size-3.5 text-[#04101a]" strokeWidth={2.5} />
+            <Lock className="size-3.5 text-primary-foreground" strokeWidth={2.5} />
           </span>
           <div>
             <p className="text-sm font-semibold font-display">{SITE_NAME}</p>

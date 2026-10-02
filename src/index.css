@@ -37,6 +37,7 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  /* Solana provenance — kept only for "this is Solana" affordances. */
   --color-sol-green: var(--sol-green);
   --color-sol-violet: var(--sol-violet);
   --color-chart-1: var(--chart-1);
@@ -52,6 +53,43 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  /* KILNEN brand ramps — creates bg-ember-500, text-gold-400, etc. */
+  --color-ember-50: var(--ember-50);
+  --color-ember-100: var(--ember-100);
+  --color-ember-200: var(--ember-200);
+  --color-ember-300: var(--ember-300);
+  --color-ember-400: var(--ember-400);
+  --color-ember-500: var(--ember-500);
+  --color-ember-600: var(--ember-600);
+  --color-ember-700: var(--ember-700);
+  --color-ember-800: var(--ember-800);
+  --color-ember-900: var(--ember-900);
+  --color-gold-300: var(--gold-300);
+  --color-gold-400: var(--gold-400);
+  --color-gold-500: var(--gold-500);
+  --color-gold-600: var(--gold-600);
+  --color-obsidian-50: var(--obsidian-50);
+  --color-obsidian-100: var(--obsidian-100);
+  --color-obsidian-200: var(--obsidian-200);
+  --color-obsidian-300: var(--obsidian-300);
+  --color-obsidian-400: var(--obsidian-400);
+  --color-obsidian-500: var(--obsidian-500);
+  --color-obsidian-600: var(--obsidian-600);
+  --color-obsidian-700: var(--obsidian-700);
+  --color-obsidian-800: var(--obsidian-800);
+  --color-obsidian-850: var(--obsidian-850);
+  --color-obsidian-900: var(--obsidian-900);
+  --color-obsidian-950: var(--obsidian-950);
+  --color-tier-ember: var(--tier-ember);
+  --color-tier-onyx: var(--tier-onyx);
+  --color-tier-obsidian: var(--tier-obsidian);
+  --color-state-private: var(--state-private);
+  --color-state-public: var(--state-public);
+  --color-state-pending: var(--state-pending);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
   /* Typography: Glitch display, Inter body, JetBrains Mono data */
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
     sans-serif;
@@ -62,93 +100,141 @@
 }
 
 /*
- * SOLZK theme — Solana dark.
- * Near-black violet-tinted surfaces, #14F195 (mint green) as primary,
- * #9945FF (violet) as accent, and the official Solana gradient for
- * emphasis. The app is dark-only by design.
+ * KILNEN theme — ember on obsidian.
+ * Warm ember orange as the action colour on a near-neutral obsidian canvas.
+ * Brand warmth means "privacy ON"; public state is deliberately colourless.
+ * Success is teal, not green (colour-blind separation — see the brand kit).
+ * Solana green/violet survive only as provenance accents, never as chrome.
+ * The app is dark-only by design.
  */
 :root {
   --radius: 0.75rem;
 
-  /* Solana brand */
-  --sol-green: #14f195;
-  --sol-violet: #9945ff;
-  --sol-gradient: linear-gradient(
-    91.26deg,
-    #9945ff 0.04%,
-    #8752f3 23.43%,
-    #5497d5 41.59%,
-    #43b4ca 55.11%,
-    #20e3b2 78.05%,
-    #14f195 100.04%
-  );
+  /* ---- Brand ramps ------------------------------------------------------ */
+  --ember-50: #fff6f0;
+  --ember-100: #ffe8d6;
+  --ember-200: #ffd0ab;
+  --ember-300: #ffb176;
+  --ember-400: #ff8a1f;
+  --ember-500: #f2610c; /* PRIMARY ACTION */
+  --ember-600: #d14e08;
+  --ember-700: #a83d0a;
+  --ember-800: #7c2d0b;
+  --ember-900: #521e08;
+  --gold-300: #ffe0a3;
+  --gold-400: #ffd37a;
+  --gold-500: #f0b94e;
+  --gold-600: #c89434;
+  --obsidian-50: #f4f5f7;
+  --obsidian-100: #dde1e8;
+  --obsidian-200: #b6bcc9;
+  --obsidian-300: #8b93a5;
+  --obsidian-400: #6b7385;
+  --obsidian-500: #4a5262;
+  --obsidian-600: #333a49;
+  --obsidian-700: #222733;
+  --obsidian-800: #161a23;
+  --obsidian-850: #10131a;
+  --obsidian-900: #0b0d12;
+  --obsidian-950: #08090c; /* CANVAS */
+  /* ---- Burn tiers ------------------------------------------------------ */
+  --tier-ember: #ff8a1f;
+  --tier-onyx: #a9b4c4;
+  --tier-obsidian: #8b6df0;
+  /* ---- Protocol state -------------------------------------------------- */
+  --state-private: #ff8a1f;
+  --state-public: #8b93a5;
+  --state-pending: #ffd37a;
+  /* ---- Semantic -------------------------------------------------------- */
+  --success: #14d9c4; /* teal, NOT green */
+  --warning: #f0b94e;
+  --danger: #e5484d;
+  --info: #5aa9e6;
 
-  /* shadcn tokens (dark values in :root — the app is dark-only) */
-  --background: #070b14;
-  --foreground: #f5f7fa;
-  --card: #0b1120;
-  --card-foreground: #f5f7fa;
-  --popover: #0d1324;
-  --popover-foreground: #f5f7fa;
-  --primary: #14f195;
-  --primary-foreground: #04101a;
+  /* ---- Brand gradients -------------------------------------------------- */
+  /* Ember→gold, the kiln. Retires the old Solana violet↔green gradient. */
+  --ember-gradient: linear-gradient(
+    91.26deg,
+    #7c2d0b 0%,
+    #f2610c 32%,
+    #ff8a1f 62%,
+    #ffd37a 100%
+  );
+  --sol-gradient: var(--ember-gradient);
+
+  /* ---- shadcn token mapping -------------------------------------------- */
+  --background: #08090c;
+  --foreground: #f4f5f7;
+  --card: #0b0d12;
+  --card-foreground: #f4f5f7;
+  --popover: #10131a;
+  --popover-foreground: #f4f5f7;
+  --primary: #f2610c;
+  --primary-foreground: #1a0a02; /* near-black on ember = 5.96:1 AA */
   --secondary: rgba(255, 255, 255, 0.06);
-  --secondary-foreground: #f5f7fa;
+  --secondary-foreground: #f4f5f7;
   --muted: rgba(255, 255, 255, 0.05);
-  --muted-foreground: #8b93a7;
-  --accent: rgba(153, 69, 255, 0.16);
-  --accent-foreground: #c9b4ff;
-  --destructive: #ff5c5c;
+  --muted-foreground: #8b93a5;
+  --accent: rgba(255, 138, 31, 0.14);
+  --accent-foreground: #ffb176;
+  --destructive: #e5484d;
   --border: rgba(255, 255, 255, 0.09);
   --input: rgba(255, 255, 255, 0.12);
-  --ring: rgba(20, 241, 149, 0.55);
-  --chart-1: #14f195;
-  --chart-2: #9945ff;
-  --chart-3: #43b4ca;
-  --chart-4: #20e3b2;
-  --chart-5: #5497d5;
-  --sidebar: #080d18;
-  --sidebar-foreground: #f5f7fa;
-  --sidebar-primary: #9945ff;
-  --sidebar-primary-foreground: #ffffff;
+  --ring: rgba(255, 138, 31, 0.55);
+  --chart-1: #ff8a1f;
+  --chart-2: #a9b4c4;
+  --chart-3: #8b6df0;
+  --chart-4: #14d9c4;
+  --chart-5: #ffd37a;
+  --sidebar: #0b0d12;
+  --sidebar-foreground: #f4f5f7;
+  --sidebar-primary: #f2610c;
+  --sidebar-primary-foreground: #1a0a02;
   --sidebar-accent: rgba(255, 255, 255, 0.06);
-  --sidebar-accent-foreground: #f5f7fa;
+  --sidebar-accent-foreground: #f4f5f7;
   --sidebar-border: rgba(255, 255, 255, 0.09);
-  --sidebar-ring: rgba(153, 69, 255, 0.55);
+  --sidebar-ring: rgba(255, 138, 31, 0.55);
+
+  /* ---- Solana provenance ----------------------------------------------- */
+  /* KEEP for wallet connect, SOL chips, explorer links. NEVER as the primary
+     action colour — that is what made the app look like every other dApp. */
+  --sol-green: #14f195;
+  --sol-violet: #9945ff; /* tiers only */
 }
 
+/* Dark-only app: .dark mirrors :root with the same ember/obsidian values. */
 .dark {
-  --background: #070b14;
-  --foreground: #f5f7fa;
-  --card: #0b1120;
-  --card-foreground: #f5f7fa;
-  --popover: #0d1324;
-  --popover-foreground: #f5f7fa;
-  --primary: #14f195;
-  --primary-foreground: #04101a;
+  --background: #08090c;
+  --foreground: #f4f5f7;
+  --card: #0b0d12;
+  --card-foreground: #f4f5f7;
+  --popover: #10131a;
+  --popover-foreground: #f4f5f7;
+  --primary: #f2610c;
+  --primary-foreground: #1a0a02;
   --secondary: rgba(255, 255, 255, 0.06);
-  --secondary-foreground: #f5f7fa;
+  --secondary-foreground: #f4f5f7;
   --muted: rgba(255, 255, 255, 0.05);
-  --muted-foreground: #8b93a7;
-  --accent: rgba(153, 69, 255, 0.16);
-  --accent-foreground: #c9b4ff;
-  --destructive: #ff5c5c;
+  --muted-foreground: #8b93a5;
+  --accent: rgba(255, 138, 31, 0.14);
+  --accent-foreground: #ffb176;
+  --destructive: #e5484d;
   --border: rgba(255, 255, 255, 0.09);
   --input: rgba(255, 255, 255, 0.12);
-  --ring: rgba(20, 241, 149, 0.55);
-  --chart-1: #14f195;
-  --chart-2: #9945ff;
-  --chart-3: #43b4ca;
-  --chart-4: #20e3b2;
-  --chart-5: #5497d5;
-  --sidebar: #080d18;
-  --sidebar-foreground: #f5f7fa;
-  --sidebar-primary: #9945ff;
-  --sidebar-primary-foreground: #ffffff;
+  --ring: rgba(255, 138, 31, 0.55);
+  --chart-1: #ff8a1f;
+  --chart-2: #a9b4c4;
+  --chart-3: #8b6df0;
+  --chart-4: #14d9c4;
+  --chart-5: #ffd37a;
+  --sidebar: #0b0d12;
+  --sidebar-foreground: #f4f5f7;
+  --sidebar-primary: #f2610c;
+  --sidebar-primary-foreground: #1a0a02;
   --sidebar-accent: rgba(255, 255, 255, 0.06);
-  --sidebar-accent-foreground: #f5f7fa;
+  --sidebar-accent-foreground: #f4f5f7;
   --sidebar-border: rgba(255, 255, 255, 0.09);
-  --sidebar-ring: rgba(153, 69, 255, 0.55);
+  --sidebar-ring: rgba(255, 138, 31, 0.55);
 }
 
 @layer base {
@@ -183,50 +269,112 @@
     cursor: pointer;
   }
   ::selection {
-    background: rgba(20, 241, 149, 0.28);
+    background: rgba(255, 138, 31, 0.28);
     color: #ffffff;
   }
 }
 
 @layer utilities {
-  /* The official Solana gradient, as text */
-  .text-sol-gradient {
-    background: var(--sol-gradient);
+  /* Ember→gold gradient, as text */
+  .text-ember-gradient {
+    background: var(--ember-gradient);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
   }
-  /* The official Solana gradient, as a filled surface */
-  .bg-sol-gradient {
-    background: var(--sol-gradient);
+  /* Ember→gold gradient, as a filled surface */
+  .bg-ember-gradient {
+    background: var(--ember-gradient);
   }
-  /* Soft ambient glow used behind heroes and CTAs */
-  .bg-sol-glow {
+  /* Soft ambient ember glow used behind heroes and CTAs */
+  .bg-ember-glow {
     background:
       radial-gradient(
         42rem 26rem at 12% -8%,
-        rgba(153, 69, 255, 0.16),
+        rgba(242, 97, 12, 0.18),
         transparent 60%
       ),
       radial-gradient(
         38rem 24rem at 88% 4%,
-        rgba(20, 241, 149, 0.1),
+        rgba(255, 211, 122, 0.1),
         transparent 60%
       );
   }
-  /* Hairline gradient border for cards / panels */
+  /* Hairline ember/gold gradient border for cards / panels */
+  .border-ember-gradient {
+    border: 1px solid transparent;
+    background:
+      linear-gradient(var(--card), var(--card)) padding-box,
+      linear-gradient(
+          120deg,
+          rgba(242, 97, 12, 0.55),
+          rgba(255, 211, 122, 0.25) 45%,
+          rgba(255, 138, 31, 0.55)
+        )
+        border-box;
+  }
+
+  /* Back-compat aliases: the old Solana-named utilities now render ember.
+     Prefer the ember-* names in new markup. */
+  .text-sol-gradient {
+    background: var(--ember-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .bg-sol-gradient {
+    background: var(--ember-gradient);
+  }
+  .bg-sol-glow {
+    background:
+      radial-gradient(
+        42rem 26rem at 12% -8%,
+        rgba(242, 97, 12, 0.18),
+        transparent 60%
+      ),
+      radial-gradient(
+        38rem 24rem at 88% 4%,
+        rgba(255, 211, 122, 0.1),
+        transparent 60%
+      );
+  }
   .border-sol-gradient {
     border: 1px solid transparent;
     background:
       linear-gradient(var(--card), var(--card)) padding-box,
       linear-gradient(
           120deg,
-          rgba(153, 69, 255, 0.55),
-          rgba(84, 151, 213, 0.25) 45%,
-          rgba(20, 241, 149, 0.55)
+          rgba(242, 97, 12, 0.55),
+          rgba(255, 211, 122, 0.25) 45%,
+          rgba(255, 138, 31, 0.55)
         )
         border-box;
   }
+
+  /* Burn-tier badge */
+  .tier-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: 9999px;
+    padding: 0.125rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid currentColor;
+  }
+  .tier-ember {
+    color: var(--tier-ember);
+    background: rgba(255, 138, 31, 0.12);
+  }
+  .tier-onyx {
+    color: var(--tier-onyx);
+    background: rgba(169, 180, 196, 0.12);
+  }
+  .tier-obsidian {
+    color: var(--tier-obsidian);
+    background: rgba(139, 109, 240, 0.12);
+  }
+
   .font-mono-tabular {
     font-variant-numeric: tabular-nums;
     font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,

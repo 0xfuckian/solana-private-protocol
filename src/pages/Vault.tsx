@@ -245,7 +245,7 @@ function LiquidityPanel() {
                     max={100}
                     value={withdrawPct}
                     onChange={(e) => setWithdrawPct(Number(e.target.value))}
-                    className="w-32 accent-[#14f195]"
+                    className="w-32 accent-primary"
                   />
                   <span className="font-mono-tabular text-xs text-muted-foreground">
                     withdraw {withdrawPct}%
