@@ -40,7 +40,7 @@ function Logo() {
       <span className="relative flex size-8 items-center justify-center rounded-lg bg-sol-gradient shadow-[0_0_18px_rgba(20,241,149,0.35)]">
         <Lock className="size-4 text-[#04101a]" strokeWidth={2.5} />
       </span>
-      <span className="text-[17px] font-semibold tracking-tight text-foreground">
+      <span className="text-[17px] font-semibold tracking-tight text-foreground font-display">
         {SITE_NAME}
       </span>
     </Link>
@@ -199,7 +199,7 @@ export function SiteFooter() {
             <Lock className="size-3.5 text-[#04101a]" strokeWidth={2.5} />
           </span>
           <div>
-            <p className="text-sm font-semibold">{SITE_NAME}</p>
+            <p className="text-sm font-semibold font-display">{SITE_NAME}</p>
             <p className="text-xs text-muted-foreground">
               A private ledger that settles on Solana
             </p>
