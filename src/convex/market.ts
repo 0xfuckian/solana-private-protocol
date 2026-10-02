@@ -20,7 +20,8 @@ function nowSlot(genesisMs: number): number {
 
 /**
  * The book is readable by anyone. Orders are intents, not deposits — no SOL
- * or notes move until a trade settles.
+ * or notes move until a trade settles. After sellout this book is the only
+ * price discovery: best bid / best ask / last trade are what everyone sees.
  */
 export const getBook = query({
   args: {},
@@ -50,10 +51,27 @@ export const getBook = query({
         remaining: o.amountTokens - o.filledTokens,
         created: o.createdAt,
       }));
+    // Last settled trade — the reference price the header prints.
+    const lastTrade = await ctx.db
+      .query("trades")
+      .withIndex("by_creation_time")
+      .order("desc")
+      .first();
+    const lastPrice =
+      lastTrade && lastTrade.tokens > 0
+        ? Math.round((lastTrade.lamports * 1000) / lastTrade.tokens)
+        : null;
     return {
       marketOpen: state.marketOpen,
       bids,
       asks,
+      bestBid: bids[0]?.price ?? null,
+      bestAsk: asks[0]?.price ?? null,
+      spread:
+        bids[0] && asks[0]
+          ? asks[0].price - bids[0].price
+          : null,
+      lastPrice,
     };
   },
 });

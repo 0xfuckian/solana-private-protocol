@@ -45,6 +45,10 @@ interface Book {
   marketOpen: boolean;
   bids: BookRow[];
   asks: BookRow[];
+  bestBid: number | null;
+  bestAsk: number | null;
+  spread: number | null;
+  lastPrice: number | null;
 }
 
 interface MyOrder {
@@ -72,18 +76,93 @@ interface MyTrade {
 const PRICE_MIN = 1_000; // 0.001 SOL per 1k SOLZK
 const PRICE_MAX = 100_000_000;
 
+/**
+ * Price discovery header — after sellout this book IS the price of SOLZK.
+ * Last trade, best bid, best ask, spread, at a glance.
+ */
+function PriceHeader({ book }: { book: Book }) {
+  const fmt = (p: number | null) =>
+    p === null ? "—" : `${lamportsToSol(p)} SOL`;
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <Stat
+        label="Last trade"
+        value={fmt(book.lastPrice)}
+        accent
+        sub="per 1,000 SOLZK — the reference price"
+      />
+      <Stat
+        label="Best bid"
+        value={fmt(book.bestBid)}
+        sub={book.bids.length ? `${book.bids.length} buy offer${book.bids.length === 1 ? "" : "s"} on the book` : "no buy offers yet"}
+      />
+      <Stat
+        label="Best ask"
+        value={fmt(book.bestAsk)}
+        sub={book.asks.length ? `${book.asks.length} sell offer${book.asks.length === 1 ? "" : "s"} on the book` : "no sell offers yet"}
+      />
+      <Stat
+        label="Spread"
+        value={
+          book.spread === null
+            ? "—"
+            : book.spread === 0
+              ? "crossed"
+              : `${lamportsToSol(book.spread)} SOL`
+        }
+        sub={
+          book.bids.length === 0 && book.asks.length === 0
+            ? "the book is empty — list the first offer"
+            : book.spread !== null && book.spread < 0
+              ? "crossed — a fill will execute now"
+              : "ask minus bid"
+        }
+      />
+    </div>
+  );
+}
+
 function OrderTicket() {
   const slk = useSolzk();
   const place = useMutation(api.market.placeOrder);
+  const book = useQuery(api.market.getBook) as Book | undefined;
   const [side, setSide] = useState<"buy" | "sell">("buy");
-  const [price, setPrice] = useState("10000");
+  const [price, setPrice] = useState<string>("");
   const [amount, setAmount] = useState("10000");
   const [busy, setBusy] = useState(false);
+
+  // Default the price from the book the moment it loads, so new offers
+  // land at the market instead of a hardcoded number: buying joins the
+  // best ask, selling joins the best bid.
+  const bookPrice = book
+    ? side === "buy"
+      ? book.bestAsk
+      : book.bestBid
+    : null;
+  useEffect(() => {
+    if (bookPrice && price === "") setPrice(String(bookPrice));
+  }, [bookPrice, price]);
+  // Re-price when switching sides with an untouched field.
+  useEffect(() => {
+    if (book && price === String(side === "buy" ? book.bestBid : book.bestAsk)) {
+      setPrice(String(bookPrice ?? ""));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [side]);
 
   const priceNum = Number(price || 0);
   const amountNum = Number(amount || 0);
   const gross = Math.ceil((amountNum * priceNum) / 1000);
   const fee = Math.ceil((gross * MARKET_FEE_BPS) / 10_000);
+
+  // Crossed-order preview: a buy at or above the best ask (or a sell at or
+  // below the best bid) can fill immediately against the resting offer.
+  const crosses =
+    book && priceNum > 0
+      ? side === "buy"
+        ? book.bestAsk !== null && priceNum >= book.bestAsk
+        : book.bestBid !== null && priceNum <= book.bestBid
+      : false;
 
   return (
     <Card>
@@ -152,6 +231,13 @@ function OrderTicket() {
             </div>
           </div>
 
+          {crosses && (
+            <p className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-primary">
+              This price crosses the book — it can fill immediately against
+              the resting {side === "buy" ? "ask" : "bid"} when someone takes
+              it.
+            </p>
+          )}
           <Button
             className="w-full bg-sol-gradient py-5 font-semibold text-[#04101a] hover:opacity-90"
             disabled={
@@ -184,7 +270,7 @@ function OrderTicket() {
             ) : (
               <ArrowDownUp className="mr-2 size-4" />
             )}
-            Place {side} order
+            List {side === "buy" ? "buy" : "sell"} offer
           </Button>
         </div>
       </CardContent>
@@ -672,12 +758,15 @@ function MarketInner() {
   const maxDepth = Math.max(maxBid, maxAsk);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+    <div className="space-y-6">
+      <PriceHeader book={book} />
+      <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
       <div className="space-y-6">
         <OrderTicket />
         <SwapCard />
         <RedeemCard />
       </div>
+    </div>
 
       <div className="space-y-6">
         <Card>
@@ -692,9 +781,10 @@ function MarketInner() {
               </GradientBadge>
             </div>
             <p className="mt-2 font-mono-tabular text-[11px] text-muted-foreground">
-              Devnet: mint fees for unminted lots are backfilled to the vault
-              via the simulate-sellout control — rerun it once after a
-              sold-out demo to keep claimable fees coherent.
+              After sellout this book is the price of {TICKER}: list a buy or
+              sell offer, someone takes it, the trade prints the price.
+              Devnet note: run the simulate-sellout control below to open the
+              book and backfill mint fees to the vault.
             </p>
 
             <div className="mt-5 grid grid-cols-2 gap-6">

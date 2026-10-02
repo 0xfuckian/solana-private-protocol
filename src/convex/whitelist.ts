@@ -2,7 +2,7 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { QueryCtx, MutationCtx, mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { requireUserId } from "./backendHelpers";
+import { requireUserId, ensureProtocolState } from "./backendHelpers";
 
 // ---------------------------------------------------------------------------
 // Pre-launch whitelist
@@ -204,6 +204,38 @@ export const reviewApplication = mutation({
       reviewedAt: Date.now(),
     });
     return { status: approve ? "approved" : "rejected" };
+  },
+});
+
+/**
+ * The pre-launch gate. While `open` is false the whitelist application page
+ * is the only page the site serves — every other route bounces here. The
+ * founder opens the whitelist from the founder console when applications
+ * should be live.
+ */
+export const getGate = query({
+  args: {},
+  handler: async (ctx) => {
+    const state = await ctx.db
+      .query("protocolState")
+      .withIndex("by_key", (q) => q.eq("key", "global"))
+      .unique();
+    return { open: state?.whitelistOpen ?? false };
+  },
+});
+
+/** Founder control: open (or re-close) the whitelist phase. */
+export const setWhitelistOpen = mutation({
+  args: { open: v.boolean() },
+  handler: async (ctx, { open }) => {
+    const userId = await requireUserId(ctx);
+    const user = await ctx.db.get(userId);
+    if (user?.role !== "admin") {
+      throw new Error("Founder access required.");
+    }
+    const state = await ensureProtocolState(ctx);
+    await ctx.db.patch(state._id, { whitelistOpen: open });
+    return { open };
   },
 });
 

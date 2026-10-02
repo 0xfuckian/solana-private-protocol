@@ -68,6 +68,9 @@ const schema = defineSchema(
       lastAnchorAt: v.optional(v.number()),
       totalFeePoolCheckpoint: v.optional(v.number()),
       claimsPoolTokens: v.optional(v.number()),
+      // Pre-launch phase control: while false, the whitelist application
+      // page is the only page the site serves. The founder flips it.
+      whitelistOpen: v.optional(v.boolean()),
     }).index("by_key", ["key"]),
 
     // One shielded wallet per app account. The address is the public shielded

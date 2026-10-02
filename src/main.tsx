@@ -4,6 +4,7 @@ import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
 import { SolzkProvider } from "@/lib/solzk-context";
+import { WhitelistGate } from "@/components/site/WhitelistGate";
 import React, { StrictMode, useEffect, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
@@ -126,6 +127,7 @@ createRoot(document.getElementById("root")!).render(
           <BrowserRouter>
             <RouteSyncer />
             <Suspense fallback={<RouteLoading />}>
+              <WhitelistGate>
               <Routes>
               <Route path="/" element={<Landing />} />
               <Route
@@ -177,6 +179,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/whitelist" element={<Whitelist />} />
               <Route path="*" element={<NotFound />} />
               </Routes>
+              </WhitelistGate>
             </Suspense>
           </BrowserRouter>
         </SolzkProvider>

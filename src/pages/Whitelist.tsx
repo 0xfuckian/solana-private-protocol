@@ -25,8 +25,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { SiteLayout } from "@/components/site/Layout";
-import { PageShell } from "@/components/site/Layout";
 import { SectionHeading, GradientBadge } from "@/components/site/Stat";
 import {
   BadgeCheck,
@@ -43,8 +41,55 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useNavigate } from "react-router";
 
 const ANNOUNCE_URL = "https://x.com/solzk/status/1974000000000000000";
+
+/**
+ * Minimal chrome for the standalone application page: brand mark, phase
+ * badge, and a sign-in/out button. No site nav — the whitelist page is the
+ * only page until the founder opens the whitelist.
+ */
+function WhitelistChrome() {
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+  return (
+    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-xl">
+      <div className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-4 sm:px-6">
+        <div className="flex items-center gap-2.5">
+          <span className="flex size-8 items-center justify-center rounded-lg bg-sol-gradient">
+            <Lock className="size-4 text-[#04101a]" strokeWidth={2.5} />
+          </span>
+          <span className="text-[17px] font-semibold tracking-tight text-foreground font-display">
+            {SITE_NAME}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="hidden items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-400/10 px-3 py-1 text-xs font-medium text-amber-400 sm:inline-flex">
+            <span className="size-1.5 rounded-full bg-amber-400 sol-pulse" />
+            pre-launch · whitelist phase
+          </span>
+          {user ? (
+            <Button variant="outline" size="sm" onClick={async () => {
+              await signOut();
+              navigate("/whitelist");
+            }}>
+              Sign out
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => navigate("/auth?returnTo=%2Fwhitelist")}
+            >
+              Sign in to apply
+            </Button>
+          )}
+        </div>
+      </div>
+    </header>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Access card — the SOL-ZK clearance card: dark terminal frame, big gradient
@@ -316,13 +361,15 @@ export default function Whitelist() {
     /^https:\/\/(www\.)?(x|twitter)\.com\/\S+$/i.test(postLink.trim());
 
   return (
-    <SiteLayout>
-      <PageShell>
+    <div className="flex min-h-screen flex-col bg-background">
+      <WhitelistChrome />
+      <main className="flex-1">
+        <div className="mx-auto w-full max-w-5xl px-4 pb-20 pt-10 sm:px-6">
         {/* Hero */}
         <div className="mx-auto max-w-3xl text-center">
           <GradientBadge className="mx-auto">
             <Sparkles className="size-3.5" />
-            Pre-launch · whitelist open
+            Pre-launch whitelist
           </GradientBadge>
           <h1 className="mt-5 text-4xl font-semibold tracking-tight sm:text-5xl">
             Get on the <span className="text-sol-gradient">list</span>
@@ -468,7 +515,8 @@ export default function Whitelist() {
           </CardContent>
         </Card>
 
-        {/* Status + card preview */}
+        {/* Status + card preview — visible once an application exists */}
+        {status !== "none" && (
         <div className="mx-auto mt-14 max-w-5xl">
           <SectionHeading
             kicker="Your clearance"
@@ -528,10 +576,16 @@ export default function Whitelist() {
             </div>
           </div>
         </div>
+        )}
         {/* Founder console (admin only) */}
         <FounderConsole />
-      </PageShell>
-    </SiteLayout>
+        </div>
+      </main>
+      <footer className="border-t border-border/70 py-8 text-center text-xs text-muted-foreground">
+        {SITE_NAME} — a private ledger that settles on Solana. Devnet
+        simulation; nothing here is financial advice.
+      </footer>
+    </div>
   );
 }
 
@@ -625,7 +679,10 @@ function FounderConsole() {
   const apps = useQuery(api.whitelist.listApplications, isAdmin ? {} : "skip");
   const review = useMutation(api.whitelist.reviewApplication);
   const claimFounder = useMutation(api.whitelist.claimFounder);
+  const gate = useQuery(api.whitelist.getGate);
+  const setGate = useMutation(api.whitelist.setWhitelistOpen);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [gateBusy, setGateBusy] = useState(false);
 
   if (user === undefined) return null;
 
@@ -676,6 +733,38 @@ function FounderConsole() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        {/* Phase control: the gate that locks every other page. */}
+        <div className="flex flex-col items-start justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center">
+          <div>
+            <p className="text-sm font-semibold">
+              Whitelist phase: {gate === undefined ? "…" : gate.open ? "OPEN" : "CLOSED"}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              While closed, this application page is the only page the site
+              serves. Opening it unlocks the whole site.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant={gate?.open ? "outline" : "default"}
+            className={gate?.open ? "" : "bg-sol-gradient font-semibold text-[#04101a] hover:opacity-90"}
+            disabled={gateBusy || gate === undefined}
+            onClick={async () => {
+              setGateBusy(true);
+              try {
+                await setGate({ open: !gate?.open });
+                toast.success(gate?.open ? "Whitelist closed — site locked to this page." : "Whitelist opened — the full site is live.");
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Failed");
+              } finally {
+                setGateBusy(false);
+              }
+            }}
+          >
+            {gateBusy ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : gate?.open ? <XCircle className="mr-1.5 size-3.5" /> : <CheckCircle2 className="mr-1.5 size-3.5" />}
+            {gate?.open ? "Close the whitelist" : "Open the whitelist"}
+          </Button>
+        </div>
         {!apps && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" /> Loading applications…
