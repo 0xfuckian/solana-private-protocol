@@ -480,6 +480,25 @@ function MintForm({
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
+      {/* Step tracker — Privacy Cash deposit→withdraw clarity: you always know which stage you're in */}
+      <ol className="grid gap-2 sm:grid-cols-5">
+        {[
+          ["1", "Wallet", "Unlocked"],
+          ["2", "Registered", "On ledger"],
+          ["3", "Sized", `${lots} lot${lots > 1 ? "s" : ""}`],
+          ["4", "Pay", "Invoice"],
+          ["5", "Settle", "3 confs"],
+        ].map(([n, t, sub], i) => {
+          const active = (i === 0 || i === 1 || i === 2);
+          return (
+            <li key={t} className={`rounded-xl border px-3 py-2.5 ${active ? "border-primary/40 bg-primary/5" : "border-border/60 bg-card"}`}>
+              <p className="font-mono-tabular text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Step {n}</p>
+              <p className={`mt-0.5 text-sm font-semibold ${active ? "text-primary" : "text-foreground"}`}>{t}</p>
+              <p className="font-mono-tabular text-[11px] text-muted-foreground">{sub}</p>
+            </li>
+          );
+        })}
+      </ol>
       {/* Issuance parameters — the terminal-style panel */}
       <div className="rounded-xl border border-primary/25 bg-card/60">
         <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
@@ -734,6 +753,76 @@ function MintForm({
           value={`${ENVELOPE_MINT_BYTES} bytes`}
           sub="Uniform mint size — the amount is inside, sealed"
         />
+      </div>
+
+      {/* Fee schedule — Privacy Cash-style explicit table: every fee, no surprises */}
+      <div className="rounded-xl border border-border/70 bg-card">
+        <div className="border-b border-border/60 px-5 py-3">
+          <p className="font-mono-tabular text-[11px] font-semibold uppercase tracking-[0.25em] text-foreground">
+            Fee schedule
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                <th className="px-5 py-3 font-medium">Action</th>
+                <th className="px-5 py-3 font-medium">Fee</th>
+                <th className="px-5 py-3 font-medium">Where it goes</th>
+              </tr>
+            </thead>
+            <tbody className="font-mono-tabular text-[13px]">
+              <tr className="border-b border-border/40">
+                <td className="px-5 py-3 font-semibold text-foreground">Mint</td>
+                <td className="px-5 py-3">5% of price + 0.00005 SOL network</td>
+                <td className="px-5 py-3 text-muted-foreground">2.5% vault pool · 2.5% treasury · 95% protocol liquidity</td>
+              </tr>
+              <tr className="border-b border-border/40">
+                <td className="px-5 py-3 font-semibold text-foreground">Transfer</td>
+                <td className="px-5 py-3">2% (1% if staked) · burn tiers −25/−50/−75%</td>
+                <td className="px-5 py-3 text-muted-foreground">Half vault pool · half treasury</td>
+              </tr>
+              <tr className="border-b border-border/40">
+                <td className="px-5 py-3 font-semibold text-foreground">Relayer</td>
+                <td className="px-5 py-3">0.00005 SOL flat, or fee-in-note from 25 SOLZK</td>
+                <td className="px-5 py-3 text-muted-foreground">Relayer fee vault (public, in explorer)</td>
+              </tr>
+              <tr>
+                <td className="px-5 py-3 font-semibold text-foreground">Swap / redeem</td>
+                <td className="px-5 py-3">0.3% swap · 2% exit fee on redeem</td>
+                <td className="px-5 py-3 text-muted-foreground">Half vault pool · half treasury</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Privacy tips — Privacy Cash caveats, adapted: what the sim hides and what it doesn't */}
+      <div className="rounded-xl border border-amber-400/25 bg-amber-400/5 p-5">
+        <p className="font-mono-tabular text-[11px] font-semibold uppercase tracking-[0.25em] text-amber-400">
+          Privacy notes — read before you mint
+        </p>
+        <ul className="mt-3 space-y-2 text-[13px] leading-6 text-muted-foreground">
+          <li>· Mint amounts are public (supply must be auditable). Privacy starts after the mint — transfers hide sender, receiver, amount and asset.</li>
+          <li>· Timing leaks: the chain shows an envelope landed at a slot. Avoid minting a unique lot count and moving it seconds later.</li>
+          <li>· Keep this tab open through settlement — the proof is built in your browser. Closing loses nothing: reopen and the invoice resumes.</li>
+          <li>· Research build: proofs here are simulated commitments, not audited Groth16. Do not treat this as production privacy.</li>
+        </ul>
+      </div>
+
+      {/* Mint FAQ */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {[
+          ["I paid but nothing happened.", `Payments need ${CONFIRMATIONS_REQUIRED} confirmations (~12s). The invoice page shows the count climbing, then settlement starts by itself — there is no mint button.`],
+          ["I closed the tab mid-mint.", "Nothing is lost. Reopen the mint page with the same wallet; the newest unsettled invoice resumes automatically."],
+          ["Why is my cap lower than expected?", `Caps are per wallet across every invoice: ${lotsLeft} of ${cap} lots left on the ${tier} rate. Whitelisted wallets use the approved rate.`],
+          ["Where does the 5% go?", "Half to the vault fee pool (claimable by depositors), half to the treasury. The other 95% becomes protocol liquidity backing redemptions."],
+        ].map(([q, a]) => (
+          <div key={q as string} className="rounded-xl border border-border/70 bg-card p-4">
+            <p className="text-sm font-semibold text-foreground">{q}</p>
+            <p className="mt-1.5 text-[13px] leading-6 text-muted-foreground">{a}</p>
+          </div>
+        ))}
       </div>
     </div>
   );

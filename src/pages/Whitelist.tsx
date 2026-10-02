@@ -7,6 +7,7 @@ import {
   APPROVED_MAX_LOTS,
   APPROVED_RATE_LAMPORTS,
   LOT_SIZE,
+  OPEN_MAX_LOTS,
   OPEN_RATE_LAMPORTS,
   SITE_NAME,
   TICKER,
@@ -577,6 +578,142 @@ export default function Whitelist() {
           </div>
         </div>
         )}
+        {/* Rate comparison — Jupiter-style explicit pricing, Privacy Cash-style fee clarity */}
+        <div className="mx-auto mt-14 max-w-5xl">
+          <SectionHeading
+            kicker="Pricing"
+            title="What the list saves you"
+            description="Two prices, one supply. Approval lowers what you pay per lot — it never reserves supply. First come, first served until 210M SOLZK is gone."
+          />
+          <div className="mt-8 overflow-x-auto rounded-2xl border border-border/70">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                  <th className="px-5 py-3 font-medium">Tier</th>
+                  <th className="px-5 py-3 font-medium">Per lot (10,000 SOLZK)</th>
+                  <th className="px-5 py-3 font-medium">Wallet cap</th>
+                  <th className="px-5 py-3 font-medium">Max spend</th>
+                </tr>
+              </thead>
+              <tbody className="font-mono-tabular">
+                <tr className="border-b border-border/40 bg-primary/5">
+                  <td className="px-5 py-3 font-semibold text-primary">Whitelisted</td>
+                  <td className="px-5 py-3">{lamportsToSol(APPROVED_RATE_LAMPORTS)} SOL</td>
+                  <td className="px-5 py-3">{APPROVED_MAX_LOTS} lots · {formatTokenAmount(APPROVED_MAX_LOTS * LOT_SIZE)} {TICKER}</td>
+                  <td className="px-5 py-3">{lamportsToSol(APPROVED_RATE_LAMPORTS * APPROVED_MAX_LOTS)} SOL</td>
+                </tr>
+                <tr>
+                  <td className="px-5 py-3 font-semibold">Open</td>
+                  <td className="px-5 py-3">{lamportsToSol(OPEN_RATE_LAMPORTS)} SOL</td>
+                  <td className="px-5 py-3">{OPEN_MAX_LOTS} lots · {formatTokenAmount(OPEN_MAX_LOTS * LOT_SIZE)} {TICKER}</td>
+                  <td className="px-5 py-3">{lamportsToSol(OPEN_RATE_LAMPORTS * OPEN_MAX_LOTS)} SOL</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-3 text-xs leading-5 text-muted-foreground">
+            Mint fee is 5% of the mint price on top (half to the vault fee pool, half to the treasury) plus a 0.00005 SOL network fee per mint — shown on the invoice before you pay.
+          </p>
+        </div>
+
+        {/* Status timeline — where am I in the queue */}
+        <div className="mx-auto mt-14 max-w-5xl">
+          <SectionHeading
+            kicker="Timeline"
+            title="From application to mint"
+            description="Four states. You can track yours on this page any time — the access card above mirrors the same status."
+          />
+          <div className="mt-8 grid gap-3 sm:grid-cols-4">
+            {[
+              ["01", "Applied", "Your link + wallet are in the queue.", status !== "none"],
+              ["02", "In review", "A human opens your X post and checks the wallet.", status === "pending" || status === "approved"],
+              ["03", "Cleared", "Approved wallets mint at the whitelist rate.", status === "approved"],
+              ["04", "Minted", "Open an invoice on the mint page — the rate applies automatically.", false],
+            ].map(([n, t, body, done]) => (
+              <div key={t as string} className={`rounded-2xl border p-5 ${done ? "border-primary/40 bg-primary/5" : "border-border/70 bg-card"}`}>
+                <p className="font-mono-tabular text-xs text-muted-foreground">{n}</p>
+                <p className="mt-1.5 flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                  {done ? <Check className="size-4 text-primary" /> : null}{t}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">{body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Policy — Helius-rings-inspired compliance, stated honestly for a sim */}
+        <div className="mx-auto mt-14 max-w-5xl">
+          <SectionHeading
+            kicker="Policy"
+            title="How the list is run"
+            description="Manual review, one application per wallet, and rules that are enforced in the ledger — not just written on this page."
+          />
+          <div className="mt-8 grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl border border-border/70 bg-card p-6">
+              <p className="flex items-center gap-2 text-sm font-semibold text-foreground"><ShieldCheck className="size-4 text-primary" /> Manual review</p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">Every application is opened by a human: the X post must exist and show the repost or reply, and the wallet string must be a valid Solana address. Bots, fake links and typos are rejected — rejected wallets can reapply with corrected details.</p>
+            </div>
+            <div className="rounded-2xl border border-border/70 bg-card p-6">
+              <p className="flex items-center gap-2 text-sm font-semibold text-foreground"><Wallet className="size-4 text-primary" /> One wallet, one application</p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">Approval binds the wallet address, not the account. A second account cannot claim your address, and an approved wallet cannot re-apply — the ledger matches approvals by address at mint time.</p>
+            </div>
+            <div className="rounded-2xl border border-border/70 bg-card p-6">
+              <p className="flex items-center gap-2 text-sm font-semibold text-foreground"><BadgeCheck className="size-4 text-primary" /> Allowlist at mint time</p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">The mint checks the approval at invoice time: approved wallets are priced at {lamportsToSol(APPROVED_RATE_LAMPORTS)} SOL per lot, everyone else at {lamportsToSol(OPEN_RATE_LAMPORTS)} SOL. No snapshot games, no hidden tiers.</p>
+            </div>
+            <div className="rounded-2xl border border-border/70 bg-card p-6">
+              <p className="flex items-center gap-2 text-sm font-semibold text-foreground"><Lock className="size-4 text-primary" /> What approval is not</p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">Not a reservation of supply, not a promise of returns, not a KYC pass. It is a price tier. Sanctioned or abusive wallets can still be refused at the founder console, and the pause switch can halt the protocol.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Requirements checklist with live validation */}
+        <div className="mx-auto mt-14 max-w-5xl rounded-2xl border border-border/70 bg-card p-6 sm:p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Checklist</p>
+          <h3 className="mt-2 text-xl font-semibold tracking-tight">Before you hit submit</h3>
+          <ul className="mt-5 space-y-3 text-sm">
+            {[
+              ["You follow @solzk and can open the announcement post", true],
+              ["Your repost or reply is public and you copied its https://x.com link", /^https:\/\/(www\.)?(x|twitter)\.com\/\S+$/i.test(postLink.trim())],
+              ["Your X handle is ≤15 chars (letters, numbers, _)", /^[A-Za-z0-9_]{1,15}$/.test(handle.trim().replace(/^@+/, ""))],
+              ["Your Solana wallet is 32–44 base58 chars", /^[1-9A-HJ-NP-Za-km-z]{32,48}$/.test(address.trim())],
+              ["You are signed in (the button unlocks with an account)", !!user],
+            ].map(([label, ok]) => (
+              <li key={label as string} className="flex items-start gap-2.5">
+                <span className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border ${ok ? "border-primary/50 bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>
+                  {ok ? <Check className="size-3" /> : <span className="size-1.5 rounded-full bg-current" />}
+                </span>
+                <span className={ok ? "text-foreground" : "text-muted-foreground"}>{label}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* FAQ — Helius-style accordion as cards */}
+        <div className="mx-auto mt-14 max-w-5xl">
+          <SectionHeading
+            kicker="FAQ"
+            title="Whitelist questions"
+            description="The answers the founder gives every day, written down once."
+          />
+          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+            {[
+              ["How long does review take?", "Usually under a day. Applications are checked by hand in the order they arrive — the counter at the top shows how many are still in review."],
+              ["Why was I rejected?", "Almost always a bad post link (private post, wrong URL) or a wallet typo. Fix the details and reapply — reapplying replaces the old application."],
+              ["Can I change wallets after approval?", "No — approval is bound to the address you applied with. Apply again from the new wallet if you need to switch."],
+              ["Does approval reserve tokens?", "No. It lowers your per-lot price from " + lamportsToSol(OPEN_RATE_LAMPORTS) + " to " + lamportsToSol(APPROVED_RATE_LAMPORTS) + " SOL. Supply is first come, first served."],
+              ["Do I need to connect my wallet?", "No. Paste any Solana address — including the shielded address the mint page creates for you. Nothing signs anything at apply time."],
+              ["Is this KYC?", "No. It is a social allowlist (follow + repost + manual check). It proves you showed up, not who you are."],
+            ].map(([q, a]) => (
+              <div key={q as string} className="rounded-2xl border border-border/70 bg-card p-5">
+                <p className="text-sm font-semibold text-foreground">{q}</p>
+                <p className="mt-1.5 text-sm leading-6 text-muted-foreground">{a}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Founder console (admin only) */}
         <FounderConsole />
         </div>

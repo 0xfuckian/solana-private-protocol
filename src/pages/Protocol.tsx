@@ -130,12 +130,14 @@ export default function Protocol() {
           {[
             ["premise", "01 Premise"],
             ["rates", "02 Rates"],
-            ["mint", "03 The mint"],
-            ["public", "04 What is public"],
-            ["how", "05 Notes & the pool"],
-            ["market", "06 The market"],
-            ["roadmap", "07 Roadmap"],
-            ["faq", "08 Troubleshooting"],
+            ["fees", "03 Fees"],
+            ["mint", "04 The mint"],
+            ["public", "05 What is public"],
+            ["how", "06 Notes & the pool"],
+            ["market", "07 The market"],
+            ["safety", "08 Safety"],
+            ["roadmap", "09 Roadmap"],
+            ["faq", "10 Troubleshooting"],
           ].map(([id, label]) => (
             <a
               key={id}
@@ -230,7 +232,71 @@ export default function Protocol() {
           </p>
         </Section>
 
-        <Section id="mint" num="03" kicker="The mint" title="Five stages, end to end">
+        <Section
+          id="fees"
+          num="03"
+          kicker="Fees"
+          title="Every fee, on one table"
+        >
+          <p>
+            Copied from the best DEX and privacy-protocol pages: no fee should
+            surprise you at signing time. Every row below is enforced in the
+            ledger — the mint page, dashboard and explorer all read the same
+            constants.
+          </p>
+          <div className="overflow-x-auto rounded-xl border border-border/70">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                  <th className="px-4 py-3 font-medium">Action</th>
+                  <th className="px-4 py-3 font-medium">Fee</th>
+                  <th className="px-4 py-3 font-medium">Split</th>
+                </tr>
+              </thead>
+              <tbody className="font-mono-tabular text-[13px]">
+                <tr className="border-b border-border/40">
+                  <td className="px-4 py-3 font-semibold text-foreground">Mint</td>
+                  <td className="px-4 py-3">5% of price + 0.00005 SOL network</td>
+                  <td className="px-4 py-3 text-muted-foreground">2.5% vault · 2.5% treasury · 95% liquidity</td>
+                </tr>
+                <tr className="border-b border-border/40">
+                  <td className="px-4 py-3 font-semibold text-foreground">Transfer</td>
+                  <td className="px-4 py-3">2% default · 1% if staked · burn tiers −25/−50/−75%</td>
+                  <td className="px-4 py-3 text-muted-foreground">Half vault · half treasury</td>
+                </tr>
+                <tr className="border-b border-border/40">
+                  <td className="px-4 py-3 font-semibold text-foreground">Relayer</td>
+                  <td className="px-4 py-3">0.00005 SOL flat or fee-in-note from 25 SOLZK</td>
+                  <td className="px-4 py-3 text-muted-foreground">Relayer fee vault (public)</td>
+                </tr>
+                <tr className="border-b border-border/40">
+                  <td className="px-4 py-3 font-semibold text-foreground">Swap</td>
+                  <td className="px-4 py-3">0.3% constant-product fee</td>
+                  <td className="px-4 py-3 text-muted-foreground">Half vault · half treasury</td>
+                </tr>
+                <tr className="border-b border-border/40">
+                  <td className="px-4 py-3 font-semibold text-foreground">Redeem (exit)</td>
+                  <td className="px-4 py-3">2% of gross at 350 lamports/token</td>
+                  <td className="px-4 py-3 text-muted-foreground">Half vault · half treasury · rest leaves liquidity</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-3 font-semibold text-foreground">Fee-share claim</td>
+                  <td className="px-4 py-3">No fee — 1% of proven value paid out</td>
+                  <td className="px-4 py-3 text-muted-foreground">Funded by the claims pool (0.1% of supply at genesis)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            Staking halves the transfer fee (2% → 1%) before burn-tier
+            discounts apply, and lifts the daily simulation transfer limit
+            from 10 to 100 SOL-equivalent. The fee-share claim pays 1% of
+            the proven value from the claims pool — one claim per
+            (wallet, anchor, value) nullifier.
+          </p>
+        </Section>
+
+        <Section id="mint" num="04" kicker="The mint" title="Five stages, end to end">
           <p>
             You do three of them; the node and your own browser do the rest.
             Everything after the third confirmation happens on its own — the
@@ -265,7 +331,7 @@ export default function Protocol() {
 
         <Section
           id="public"
-          num="04"
+          num="05"
           kicker="What is public"
           title="Exactly what the chain reveals"
         >
@@ -310,7 +376,7 @@ export default function Protocol() {
 
         <Section
           id="how"
-          num="05"
+          num="06"
           kicker="How it works"
           title="Notes, nullifiers and the carrier"
         >
@@ -364,7 +430,7 @@ export default function Protocol() {
 
         <Section
           id="market"
-          num="06"
+          num="07"
           kicker="The market"
           title="A book that opens at sellout"
         >
@@ -390,7 +456,49 @@ export default function Protocol() {
           </p>
         </Section>
 
-        <Section id="architecture" num="07" kicker="Architecture" title="What is built and running">
+        <Section id="safety" num="08" kicker="Safety" title="What this build does not prove">
+          <p>
+            This is a research simulation on devnet, and the page says so
+            wherever money moves. The honest version of the audit table:
+          </p>
+          <div className="overflow-x-auto rounded-xl border border-border/70">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                  <th className="px-4 py-3 font-medium">Claim</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="text-[13px]">
+                <tr className="border-b border-border/40">
+                  <td className="px-4 py-3 font-semibold text-foreground">Ledger discipline (nullifiers, commitments, uniform envelopes)</td>
+                  <td className="px-4 py-3 text-muted-foreground">Running in this build, covered by 75+ regression tests</td>
+                </tr>
+                <tr className="border-b border-border/40">
+                  <td className="px-4 py-3 font-semibold text-foreground">Zero-knowledge proofs (Groth16, join-split circuit)</td>
+                  <td className="px-4 py-3 text-muted-foreground">Scaffolded only — simulated commitments, no audited circuit, no ceremony</td>
+                </tr>
+                <tr className="border-b border-border/40">
+                  <td className="px-4 py-3 font-semibold text-foreground">Note encryption (ownership, view keys, stealth ECDH)</td>
+                  <td className="px-4 py-3 text-muted-foreground">Not production-grade — legacy notes are decryptable by address holders</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-3 font-semibold text-foreground">Audits, multisig, insurance, bug bounty</td>
+                  <td className="px-4 py-3 text-muted-foreground">None yet — required before mainnet, listed as blockers in the handbook</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            Privacy tips that survive the simulation: mint amounts are public
+            (supply must be auditable); timing of envelopes leaks; avoid
+            unique lot counts moved seconds later; prefer fee-in-note over
+            reusing one SOL funding address; never paste 24 words anywhere
+            but the mint page restore box.
+          </p>
+        </Section>
+
+        <Section id="architecture" num="09" kicker="Architecture" title="What is built and running">
           <p>
             Everything below ships in this devnet build — try each piece from
             its page before you take the design on faith.
@@ -492,7 +600,7 @@ export default function Protocol() {
           </p>
         </Section>
 
-        <Section id="roadmap" num="08" kicker="Roadmap" title="What comes next">
+        <Section id="roadmap" num="10" kicker="Roadmap" title="What comes next">
           <p>
             Every mechanism in the architecture section above is running in
             this devnet build. What remains between here and mainnet is the
@@ -508,7 +616,7 @@ export default function Protocol() {
           </p>
         </Section>
 
-        <Section id="faq" num="09" kicker="Troubleshooting" title="Common questions">
+        <Section id="faq" num="11" kicker="Troubleshooting" title="Common questions">
           <div className="grid gap-3 sm:grid-cols-2">
             {[
               ["I paid but nothing happened.", "Payments need three confirmations, roughly 12 seconds. The page shows the count as it climbs."],
