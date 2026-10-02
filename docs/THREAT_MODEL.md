@@ -3,9 +3,14 @@
 ## What exists today
 This app is a Convex simulation. No Solana custody program, RPC settlement, real SPL deposits, audited join-split circuit, or production relayer is shipped. Demo balances have no monetary value. Never enter a real wallet recovery phrase, salaries, or confidential financial data.
 
+## Key custody and the server
+Keys never leave the user's device. Seeds and the v2 viewing key are generated in the browser, shown/entered once, and stored on-device only as PBKDF2 + AES-GCM ciphertext in `localStorage`. Nothing is uploaded, backed up to a cloud service, or synced across devices through the backend. Registration sends only the derived address, a public commitment, and the optional public viewing key.
+
+The server's only cryptographic role is verifying a proof the client already produced: `POST /api/transfer/verify` accepts `proof` and `publicInputs` and never a key. There is no server-side proof generation. No endpoint may accept a seed phrase, spend key, viewing private key, or password, and the wallet UI must never transmit, cloud-back-up, or server-sync them. Any integration that asks for a key is a phishing pattern to refuse.
+
 ## What we do not claim
 - No anonymity, untraceability, regulatory approval, insurance coverage, solvency, or guaranteed returns.
-- Legacy v1 note keys are derived from public address and ephemeral data. Anyone with the address can decrypt those notes, forever. AES-GCM integrity does not solve this confidentiality failure. New notes default to v2 (per-note ephemeral ECDH P-256 + HKDF + AES-GCM-256, 65-byte epk, 512-byte ct) when the recipient published a viewing key: only the viewing-private holder can read, with fresh forward secrecy per note. v1 remains as fallback for legacy wallets and is labeled in the Pay UI. Restored wallets rotate to a fresh viewing key; old v2 notes need the old key backup. Ownership/value/conservation are still unproven without the audited circuit.
+- Legacy v1 note keys are derived from public address and ephemeral data. Anyone with the address can decrypt those notes, forever. AES-GCM integrity does not solve this confidentiality failure. New notes default to v2 (per-note ephemeral ECDH P-256 + HKDF + AES-GCM-256, 65-byte epk, 512-byte ct) when the recipient published a viewing key: only the viewing-private holder can read, with fresh forward secrecy per note. v1 remains as fallback for legacy wallets and is labeled in the Pay UI. Restored wallets rotate to a fresh viewing key; old v2 notes need the user's own offline backup of the old key (never a server-held copy). Ownership/value/conservation are still unproven without the audited circuit.
 - Legacy SHA-256 statement hashes are forgeable by anybody. They prove neither ownership, membership, input value, nor conservation. The simulated spending endpoints remain unsafe for real funds.
 - Authenticated requests, timestamps, public amounts, account-linked records, IP/network metadata and browser storage can identify participants.
 - Fixed-size padded strings do not establish constant-size serialized Solana transactions, and do not hide timing or amount correlations.

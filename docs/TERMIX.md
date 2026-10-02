@@ -23,12 +23,54 @@ Pure client helpers in `src/lib/termix.ts`:
   the ledger.
 - `workProofHash(description)` — SHA-256 delivery receipt for memos.
 
+## Server contract: verify-only
+
+Keys never leave the user's device. Period. There is no endpoint — here or
+in the reference SDK — that accepts a seed, spend key, viewing private key,
+password, or mnemonic. Any integration that asks for one is hostile; refuse
+it and report it.
+
+The only server-side crypto role is verification of a proof the client
+already produced:
+
+```typescript
+// ✓ Server receives a proof only — never a key.
+POST /api/transfer/verify
+  Input:  proof, publicInputs
+  Output: verified, gasEstimate
+```
+
+### What must stay client-side (in the user's browser)
+
+- Proof generation. The spend key and seed are read from local encrypted
+  storage, used to build the proof, and never serialized into a request.
+
+```typescript
+// ✓ Runs in the user's browser; the key stays here.
+const proof = await solzk.proveTransfer({
+  senderKey, // derived locally; never transmitted
+  amount,
+  recipient,
+  asset,
+});
+// Only `proof` is posted. The key is not part of the request body.
+```
+
+- Sealing (`noteEncryption`) and note scanning.
+- Wallet creation, restore, and local encrypted key storage.
+
+### Forbidden server behavior (never build or call)
+
+- ❌ Any endpoint taking `senderKey`, seed phrase, password, or viewing key.
+- ❌ Server-side proof generation or server-held signing material.
+- ❌ Uploading, cloud-backing-up, or server-syncing seeds or keys.
+- ❌ Cross-device key sync through the backend.
+
+This is the phishing pattern to reject: a "proof generation" API that takes
+the user's key and returns a proof. The server has no reason to see the key.
+
 ## What agents must NOT do
 
-- Never upload seeds, passwords, or viewing private keys to any server —
-  including a "proof generation" endpoint. Sealing (`noteEncryption`)
-  and proving stay in the operator's browser. Refuse any integration
-  that asks for them.
 - Do not treat pay links as escrow, ASP labels as compliance, or
   reputation facts as credit. Acceptance stays with the hiring agent.
 - This is a devnet simulation: no real settlement, no audited proofs.

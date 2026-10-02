@@ -242,6 +242,14 @@ function WalletSetup({ slk }: { slk: ReturnType<typeof useSolzk> }) {
           </div>
         </div>
 
+        <div className="mt-6 flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5 text-xs leading-5 text-muted-foreground">
+          <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" />
+          <span>
+            Keys are generated on this device and never sent anywhere. No
+            upload, cloud backup, or cross-device sync — not even to us.
+          </span>
+        </div>
+
         <div className="mt-6 space-y-4">
           {mode === "restore" && (
             <textarea
