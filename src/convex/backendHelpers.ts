@@ -1,3 +1,4 @@
+import { advanceRewardIndex, readRewardIndex, REWARD_SCALE } from "../lib/rewards";
 import { assertUnits } from "../lib/safety";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { MutationCtx, QueryCtx } from "./_generated/server";
@@ -133,6 +134,7 @@ export type VaultPoolLike = {
   totalShares: number;
   feePoolLamports: number;
   feesDistributedLamports: number;
+  rewardIndex?: string;
   feePerShare: number; // cumulative lamports per share (fixed-point 1e12)
 };
 
@@ -170,6 +172,8 @@ export async function ensureVaultPool(
     feePoolLamports: 0,
     feesDistributedLamports: 0,
     feePerShare: 0,
+    rewardIndex: "0",
+    unallocatedLamports: 0,
     updatedAt: Date.now(),
   });
   return (await ctx.db.get(id))!;
@@ -190,7 +194,11 @@ export async function ensureVaultPool(
 export async function routeTokenFee(ctx: MutationCtx, state: Doc<"protocolState">, tokens: number) {
   assertUnits(tokens, "Token fee", true);
   const vaultCut = Math.ceil(tokens / 2);
-  await ctx.db.patch(state._id, { treasuryTokens: (state.treasuryTokens ?? 0) + tokens - vaultCut, vaultFeeTokens: (state.vaultFeeTokens ?? 0) + vaultCut });
+  const staking = await ctx.db.query("stakingPool").withIndex("by_key", q => q.eq("key", "global")).unique();
+  const stakingCut = staking && staking.totalStaked > 0 ? vaultCut : 0;
+  if (staking && stakingCut > 0) await ctx.db.patch(staking._id, { rewardTokens: staking.rewardTokens + stakingCut,
+    rewardIndex: advanceRewardIndex(BigInt(staking.rewardIndex), stakingCut, staking.totalStaked).toString() });
+  await ctx.db.patch(state._id, { treasuryTokens: (state.treasuryTokens ?? 0) + tokens - vaultCut, vaultFeeTokens: (state.vaultFeeTokens ?? 0) + vaultCut - stakingCut });
 }
 
 export async function routeFee(
@@ -207,7 +215,9 @@ export async function routeFee(
     // feePerShare is fixed-point 1e12 so tiny pools still accrue.
     await ctx.db.patch(pool._id, {
       feePoolLamports: pool.feePoolLamports + vaultCut,
-      feePerShare: pool.feePerShare + Math.floor((vaultCut * 1e12) / shares),
+      rewardIndex: advanceRewardIndex(readRewardIndex(pool), vaultCut, shares).toString(),
+      // Legacy display only; no accounting relies on this floating number.
+      feePerShare: Number(advanceRewardIndex(readRewardIndex(pool), vaultCut, shares)) / Number(REWARD_SCALE) * 1e12,
       updatedAt: Date.now(),
     });
   } else {
@@ -215,6 +225,7 @@ export async function routeFee(
     // capture it when they mint shares.
     await ctx.db.patch(pool._id, {
       feePoolLamports: pool.feePoolLamports + vaultCut,
+      unallocatedLamports: (pool.unallocatedLamports ?? (pool.totalShares === 0 && pool.feePerShare === 0 ? pool.feePoolLamports : 0)) + vaultCut,
       updatedAt: Date.now(),
     });
   }

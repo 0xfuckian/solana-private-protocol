@@ -20,19 +20,32 @@ A production join-split must range-check integer values; prove ownership, secret
 
 The server must not decrypt private outputs. Clients must verify received plaintext against commitments. Binding an arbitrary ciphertext hash alone does not prove its plaintext/encryption correctness; verifiable encryption or a reviewed sender/receiver construction is required.
 
+## Implemented simulation utilities
+Burns, redemptions, vault deposits, token swaps and mock-asset unshielding now return excess declared input value as change. Seller trade settlement consumes supplied nullifiers, publishes buyer/change outputs and conserves the buyer-paid SOL escrow fee. New statements canonically bind output ciphertexts and change. These checks do not prove actual ownership or input amounts; client-declared totals remain forgeable without the circuit.
+
+Vault rewards use bigint decimal-string indices and per-position checkpoints at a 1e18 scale. Fractional credit survives deposits, claims and zero-share withdrawals. Existing numeric checkpoints are converted lazily; already-lost legacy precision cannot be recovered. Claims do not fabricate implied sellout fees. Fees collected without holders are explicitly unallocated until the next first deposit; already-attributed dust is not reassigned.
+
+Simulation staking locks principal for seven days after the latest deposit. Active stakes lower the base transfer fee to 1% (burn discounts apply afterward), raise the daily limit from 10 to 100 demo-SOL-equivalent and display 1-token/1-weight governance previews, not actual votes. The vault half of NEW token transfer/payroll fees funds staking rewards when active stakes exist. Rewards are paid only from the funded token reserve; no APY guarantee. Without stakes that half stays in a separate token reward reserve; historical reserves are not retroactively distributed. SOL fees remain in the SOL vault.
+
+Transfer/payroll limits use UTC calendar days and the fixed simulation exit rate, not a live market oracle or a production risk limit. Staking and payroll still depend on insecure legacy hash authorization and must not receive real funds.
+
+Payroll dispatch creates up to 20 recipient notes plus change atomically, charges ceil(total/100) SOLZK on top of net employee amounts and routes the fee half/half. Failure rolls back the full batch. CSV request preparation supports up to 100 payees locally. Dispatch exposes addresses/amounts to Convex; exported links are requests, not bearer-funded claims. Real employee unshielding and private custody are not available.
+
+Client scanning now excludes decoded plaintext that does not match its commitment. Legacy notes with incorrect randomness/commitment binding can disappear from spendable balances and require a reviewed migration; this check does not repair public-address-derived encryption.
+
 ## Fees and units
 Legacy demo accounting uses 100,000,000 units per displayed SOL. Real Solana uses 1,000,000,000 lamports per SOL. A named real-chain constant is provided; legacy stored balances and invoices have NOT been silently rescaled. A versioned migration is required before any RPC integration.
 
-Mint fee: 5%; transfers/trades: 2% before burn discounts; swaps: 0.3%. Fee charges round upward to integer units. Odd fee splits round upward to the vault, with treasury receiving the remainder, so the split conserves the fee. Fee-in-note quote = max(25, ceil(amount / 1000)) SOLZK. No signed competitive relayer quotes exist. Transfer token fees must not be treated as SOL lamports; legacy fee routing still needs a denomination migration.
+Mint fee: 5%; transfers/trades: 2% before burn discounts; swaps: 0.3%. Fee charges round upward to integer units. Odd fee splits round upward to the vault, with treasury receiving the remainder, so the split conserves the fee. Fee-in-note quote = max(25, ceil(amount / 1000)) SOLZK. No signed competitive relayer quotes exist. New transfer token fees are stored in token-denominated treasury/reward reserves, not SOL pools. Historical misclassification still needs a reviewed denomination migration.
 
-Payroll request generation charges nothing. A 1% payroll fee is a proposed design, not currently collected. Existing individual payment links use their normal transfer fees. Links preserve the SOLZK-PAY|v1| codec; payment requests are not funded escrow claims.
+Payroll request generation charges nothing. Atomic simulation dispatch collects a 1% token fee in addition to net payee amounts. Existing individual payment links use their normal transfer fees. Links preserve the SOLZK-PAY|v1| codec; payment requests are not funded escrow claims.
 
 ## Economic corrections
 210M / 10,000 = 21,000 lots. 100,000 tokens = 10 lots = 0.15 SOL at 0.015 SOL per lot; 100 lots = 1M tokens = 1.5 SOL. 1,000 open lots cost 35 SOL; their treasury mint fee is 0.875 SOL, not 250 SOL. 1M tokens at the open rate cost 3.5 SOL with a treasury share of 0.0875 SOL. Token market price does not turn minted token units into treasury revenue.
 
 10.5M tokens is 5% of total supply, not 5% of an unspecified treasury. No such insurance reserve has been funded. Returns require actual fee volume, available reserves and allocations; 5% APY is not guaranteed. Burned supply alone does not increase fee revenue or APY. Lending needs collateral valuation, liquidation, bad-debt handling and funded liquidity before borrowing can be enabled.
 
-## Production acceptance gates (all currently outstanding)
+## Production acceptance gates (none satisfied for mainnet)
 1. Specify and review circuit, encryption/key derivation, ciphertext binding, asset IDs and public signals.
 2. Compile and constrain circuits; independent audits by two firms; publish issues and remediations.
 3. Run/document multiparty phase-2 setup; verify Powers of Tau provenance, contributions and artifact hashes.

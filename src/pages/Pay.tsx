@@ -1,3 +1,4 @@
+import { relayerFeeTokens } from "@/lib/safety";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { GradientBadge } from "@/components/site/Stat";
@@ -5,7 +6,6 @@ import { PageShell, SiteLayout } from "@/components/site/Layout";
 import { RequireAuth } from "@/components/RequireAuth";
 import {
   RELAYER_FEE_LAMPORTS,
-  RELAYER_FEE_NOTE_TOKENS,
   TICKER,
   decodePayLink,
   formatTokenAmount,
@@ -175,8 +175,8 @@ function PayInner() {
 
   const burned = slk.serverWallet?.burnedTokens ?? 0;
   const tierLabel = burned > 0 ? "burn-tier discount applied" : null;
-  const fee = transferFeeTokens(link.amount, slk.serverWallet?.discountBps ?? 0);
-  const relayerFee = feeInNote ? RELAYER_FEE_NOTE_TOKENS : 0;
+  const fee = transferFeeTokens(link.amount, slk.serverWallet?.discountBps ?? 0, slk.staking?.feeBps ?? 200);
+  const relayerFee = feeInNote ? relayerFeeTokens(link.amount) : 0;
   const net = link.amount - fee - relayerFee;
   const affordable = slk.balance >= link.amount;
 
@@ -237,7 +237,7 @@ function PayInner() {
               </span>
               <span className="font-mono-tabular">
                 {feeInNote
-                  ? `${RELAYER_FEE_NOTE_TOKENS} ${TICKER}`
+                  ? `${formatTokenAmount(relayerFee)} ${TICKER}`
                   : `${lamportsToSol(RELAYER_FEE_LAMPORTS)} SOL`}
               </span>
             </div>

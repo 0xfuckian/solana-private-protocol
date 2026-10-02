@@ -30,6 +30,8 @@ import {
   OPEN_MAX_LOTS,
   OPEN_RATE_LAMPORTS,
   REDEEM_LAMPORTS_PER_TOKEN,
+  LAMPORTS_PER_SOL,
+  transferFeeTokens,
   RELAYER_FEE_LAMPORTS,
   RELAYER_FEE_NOTE_TOKENS,
   type RateTier,
@@ -592,14 +594,22 @@ export const sendPrivate = mutation({
       throw new Error("Proof rejected: it does not commit to these bytes.");
     }
 
+    const staking = await ctx.db.query("stakingPositions").withIndex("by_wallet", q => q.eq("walletId", wallet._id)).unique();
+    const staked = (staking?.amount ?? 0) > 0;
+    // Limits use the disclosed simulation exit-rate valuation, not a live SOL price.
+    const day = Math.floor(Date.now() / 86_400_000);
+    const usage = await ctx.db.query("transferUsage").withIndex("by_wallet_day", q => q.eq("walletId", wallet._id).eq("day", day)).unique();
+    const transferValue = args.amount * REDEEM_LAMPORTS_PER_TOKEN;
+    assertUnits(transferValue, "Transfer valuation");
+    const dailyLimit = (staked ? 100 : 10) * LAMPORTS_PER_SOL;
+    if ((usage?.valueUnits ?? 0) + transferValue > dailyLimit) throw new Error(`Daily simulation transfer limit is ${staked ? 100 : 10} SOL-equivalent.`);
+    if (usage) await ctx.db.patch(usage._id, { valueUnits: usage.valueUnits + transferValue });
+    else await ctx.db.insert("transferUsage", { walletId: wallet._id, day, valueUnits: transferValue });
+
     // Protocol fee on every transfer, discounted by the sender's burn tier.
     // The tier is public on-chain state: burned tokens → tier_id → discount.
     const discount = discountTierForBurned(wallet.burnedTokens ?? 0);
-    const transferFee = Math.ceil(
-      (args.amount * MARKET_FEE_BPS * (10_000 - discount.discountBps)) /
-        10_000 /
-        10_000,
-    );
+    const transferFee = transferFeeTokens(args.amount, discount.discountBps, staked ? 100 : 200);
     if (transferFee >= args.amount) {
       throw new Error(
         "Amount too small — it cannot cover the protocol fee.",

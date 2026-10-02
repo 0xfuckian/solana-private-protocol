@@ -29,6 +29,8 @@ import {
   incomingViewKeyFromSeedHex,
   loadWalletBlob,
   nullifierFor,
+  noteMatchesCommitment,
+  stealthAddressFor,
   outgoingViewKeyFromSeedHex,
   saveWalletBlob,
   sealNoteFor,
@@ -146,6 +148,7 @@ export function useSolzk() {
   const protocol = useQuery(api.protocol.getState);
   const vaultPool = useQuery(api.vault.getPool);
   const swapPool = useQuery(api.swap.getPool);
+  const staking = useQuery(api.staking.getStatus, authUser ? {} : "skip");
 
   const registerWalletMut = useMutation(api.protocol.registerWallet);
   const faucetMut = useMutation(api.protocol.faucet);
@@ -305,6 +308,8 @@ export function useSolzk() {
           viaStealth = opened !== null;
         }
         if (opened) {
+          const ownerAddress = viaStealth && stealthRef.current ? await stealthAddressFor(stealthRef.current, n.sealed.nonce) : address;
+          if (!await noteMatchesCommitment(ownerAddress, opened, n.commitment)) continue;
           const nullifier = await nullifierFor(
             n.commitment,
             spendKeyRef.current,
@@ -393,7 +398,7 @@ export function useSolzk() {
 
       // Same fee the node will compute, from the same public tier state.
       const discount = discountTierForBurned(serverWallet?.burnedTokens ?? 0);
-      const fee = transferFeeTokens(amount, discount.discountBps);
+      const fee = transferFeeTokens(amount, discount.discountBps, staking?.feeBps ?? 200);
       const relayerFee = opts?.feeInNote ? relayerFeeTokens(amount) : 0;
       const net = amount - fee - relayerFee;
       if (net <= 0) {
@@ -452,7 +457,7 @@ export function useSolzk() {
         feeInNote: opts?.feeInNote === true,
       });
     },
-    [address, balance, notes, sendPrivateMut, serverWallet],
+    [address, balance, notes, sendPrivateMut, serverWallet, staking],
   );
 
   /** Select notes and produce nullifiers for a shielded spend of `amount`. */
@@ -543,7 +548,7 @@ export function useSolzk() {
       if (balance < amount) throw new Error("Insufficient shielded balance");
 
       const discount = discountTierForBurned(serverWallet?.burnedTokens ?? 0);
-      const fee = transferFeeTokens(amount, discount.discountBps);
+      const fee = transferFeeTokens(amount, discount.discountBps, staking?.feeBps ?? 200);
       const relayerFee = opts?.feeInNote ? relayerFeeTokens(amount) : 0;
       const net = amount - fee - relayerFee;
       if (net <= 0) {
@@ -589,7 +594,7 @@ export function useSolzk() {
         feeInNote: opts?.feeInNote === true,
       });
     },
-    [address, balance, buildSpend, sendPrivateMut, serverWallet],
+    [address, balance, buildSpend, sendPrivateMut, serverWallet, staking],
   );
 
   /**
@@ -660,10 +665,11 @@ export function useSolzk() {
         r,
       });
       const commitment = await commitmentFor(tokensOut, r, address);
-      const statement = `withdraw:${address}:${shares}:${commitment}`;
+      const statement = `withdraw:${address}:${shares}:${tokensOut}:${commitment}:${sealedStatement(sealed)}`;
       const { proof } = await buildProof(statement);
       const res = await withdrawMut({
         shares,
+        expectedTokensOut: tokensOut,
         sealedNote: sealed,
         commitment,
         proof,
@@ -860,6 +866,7 @@ export function useSolzk() {
     serverWallet,
     protocol,
     vaultPool,
+    staking,
     error,
     setError,
     // keys

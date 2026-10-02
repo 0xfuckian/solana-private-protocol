@@ -1,4 +1,5 @@
 import { ADDRESS_LEN, encodePayLink } from "./protocol";
+import { sealedStatement } from "./spend";
 import { assertUnits, mulDivFloor } from "./safety";
 
 export interface PayrollRow { payee: string; amount: number; memo: string }
@@ -41,6 +42,19 @@ export function parsePayrollCsv(csv: string): PayrollRow[] {
     if (new TextEncoder().encode(memo).length > 120) throw new Error(`Row ${index + 2}: memo exceeds 120 bytes.`);
     return { payee, amount, memo };
   });
+}
+
+export function payrollDispatchSummary(rows: { amount: number }[]) {
+  const total = rows.reduce((sum, row) => { assertUnits(row.amount); return sum + row.amount; }, 0);
+  assertUnits(total);
+  const fee = Number((BigInt(total) + 99n) / 100n);
+  const debit = total + fee;
+  assertUnits(debit);
+  return { total, fee, debit };
+}
+
+export function payrollBatchDomain(sender: string, outputs: { payee: string; amount: number; commitment: string; sealed: { ephemeral: string; nonce: string; ciphertext: string } }[]) {
+  return `payroll:${sender}:${JSON.stringify(outputs.map(output => ({ payee: output.payee, amount: output.amount, commitment: output.commitment, sealed: sealedStatement(output.sealed) })))}`;
 }
 
 export function payrollSummary(rows: PayrollRow[]) {

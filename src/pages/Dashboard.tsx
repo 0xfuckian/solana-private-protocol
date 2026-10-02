@@ -1,3 +1,5 @@
+import { StakingCard } from "@/components/site/StakingCard";
+import { relayerFeeTokens } from "@/lib/safety";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,7 +15,6 @@ import {
   LOT_SIZE,
   RATE_TIERS,
   RELAYER_FEE_LAMPORTS,
-  RELAYER_FEE_NOTE_TOKENS,
   TICKER,
   TOTAL_SUPPLY,
   discountTierForBurned,
@@ -138,8 +139,8 @@ function SendCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
   const amountNum = Number(amount) || 0;
   const burned = slk.serverWallet?.burnedTokens ?? 0;
   const tier = discountTierForBurned(burned);
-  const fee = amountNum > 0 ? transferFeeTokens(amountNum, tier.discountBps) : 0;
-  const relayerFee = feeInNote ? RELAYER_FEE_NOTE_TOKENS : 0;
+  const fee = Number.isSafeInteger(amountNum) && amountNum > 0 ? transferFeeTokens(amountNum, tier.discountBps, slk.staking?.feeBps ?? 200) : 0;
+  const relayerFee = feeInNote && Number.isSafeInteger(amountNum) && amountNum > 0 ? relayerFeeTokens(amountNum) : 0;
   const net = Math.max(0, amountNum - fee - relayerFee);
 
   return (
@@ -237,7 +238,7 @@ function SendCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
               </span>
               <span className="font-mono-tabular">
                 {feeInNote
-                  ? `${RELAYER_FEE_NOTE_TOKENS} ${TICKER}`
+                  ? `${formatTokenAmount(relayerFee)} ${TICKER}`
                   : `${lamportsToSol(RELAYER_FEE_LAMPORTS)} SOL`}
               </span>
             </div>
@@ -871,7 +872,7 @@ function DashboardInner() {
                   >
                     <div>
                       <p className="font-mono-tabular text-sm font-semibold">
-                        {formatTokenAmount(n.value)} {TICKER}
+                        {formatTokenAmount(n.value)} {n.memo.startsWith("asset:") ? n.memo.slice(6) + " raw units" : TICKER}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {n.memo} · slot {n.slot.toLocaleString()}
@@ -886,6 +887,7 @@ function DashboardInner() {
           </CardContent>
         </Card>
 
+        <StakingCard />
         <BurnCard slk={slk} />
 
         <ViewKeysCard slk={slk} />
@@ -979,7 +981,7 @@ export default function Dashboard() {
           <div className="mb-8">
             <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Your wallet, your notes, your history — visible to nobody else.
+              Your research wallet, notes, staking locks and demo transaction history.
             </p>
           </div>
           <DashboardInner />

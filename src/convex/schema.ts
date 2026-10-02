@@ -36,6 +36,10 @@ const schema = defineSchema(
       role: v.optional(roleValidator),
     }).index("email", ["email"]),
 
+    payrollBatches: defineTable({ walletId: v.id("wallets"), recipients: v.number(), totalTokens: v.number(), feeTokens: v.number(), slot: v.number(), createdAt: v.number() }).index("by_wallet", ["walletId"]),
+    stakingPool: defineTable({ key: v.literal("global"), totalStaked: v.number(), rewardTokens: v.number(), rewardsPaid: v.number(), rewardIndex: v.string() }).index("by_key", ["key"]),
+    stakingPositions: defineTable({ walletId: v.id("wallets"), amount: v.number(), lockedUntil: v.number(), rewardCheckpoint: v.string(), pendingRewardScaled: v.string(), createdAt: v.number() }).index("by_wallet", ["walletId"]),
+    transferUsage: defineTable({ walletId: v.id("wallets"), day: v.number(), valueUnits: v.number() }).index("by_wallet_day", ["walletId", "day"]),
     operationEvents: defineTable({ userId: v.id("users"), kind: v.string(), createdAt: v.number() }).index("by_created", ["createdAt"]),
     merkleState: defineTable({ key: v.literal("global"), nextIndex: v.number(), root: v.string() }).index("by_key", ["key"]),
     merkleTreeNodes: defineTable({ level: v.number(), index: v.number(), hash: v.string() }).index("by_position", ["level", "index"]),
@@ -182,6 +186,8 @@ const schema = defineSchema(
       depositedTokens: v.number(),
       lamportsIn: v.number(),
       accumulatedFees: v.number(),
+      rewardCheckpoint: v.optional(v.string()),
+      pendingRewardScaled: v.optional(v.string()),
       lastClaimAt: v.optional(v.number()),
       createdAt: v.number(),
     }).index("by_wallet", ["walletId"]),
@@ -198,6 +204,8 @@ const schema = defineSchema(
       feesDistributedLamports: v.number(),
       // Cumulative fees per share, fixed-point 1e12 — pro-rata payout base.
       feePerShare: v.number(),
+      rewardIndex: v.optional(v.string()),
+      unallocatedLamports: v.optional(v.number()),
       updatedAt: v.number(),
     }).index("by_key", ["key"]),
 

@@ -436,7 +436,14 @@ export async function tryUnsealStealthNote(
   return tryUnsealNote(addr, sealed);
 }
 
-/** Trial-decrypt: returns null when the note is not ours. */
+/** Verify decoded plaintext against its published legacy commitment.
+ * This detects sender mistakes, not secure ownership or confidential encryption.
+ */
+export async function noteMatchesCommitment(ownerAddress: string, note: { value: number; r: string }, commitment: string): Promise<boolean> {
+  return await commitmentFor(note.value, note.r, ownerAddress) === commitment;
+}
+
+/** Trial-decrypt: returns null when decryption fails. Legacy address-derived keys are public. */
 export async function tryUnsealNote(
   myAddress: string,
   sealed: SealedNote,

@@ -3,7 +3,7 @@
  * Protocol constants shared by frontend and backend (pure data, no imports).
  */
 
-import { mulDivFloor } from "./safety";
+import { assertUnits, mulDivFloor } from "./safety";
 
 /** Legacy simulation scale. Do not use for Solana RPC amounts. */
 export const SOLANA_LAMPORTS_PER_SOL = 1_000_000_000;
@@ -236,10 +236,11 @@ export function nextDiscountTier(burned: number): DiscountTier | null {
 }
 
 /** Transfer fee in tokens at a given discount tier. */
-export function transferFeeTokens(amount: number, discountBps: number): number {
-  return Math.ceil(
-    (amount * MARKET_FEE_BPS * (10_000 - discountBps)) / 10_000 / 10_000,
-  );
+export function transferFeeTokens(amount: number, discountBps: number, baseFeeBps = MARKET_FEE_BPS): number {
+  assertUnits(amount);
+  if (!Number.isInteger(discountBps) || discountBps < 0 || discountBps > 10_000 || !Number.isInteger(baseFeeBps) || baseFeeBps < 0 || baseFeeBps > 10_000) throw new Error("Invalid fee basis points.");
+  const numerator = BigInt(amount) * BigInt(baseFeeBps) * BigInt(10_000 - discountBps);
+  return Number((numerator + 99_999_999n) / 100_000_000n);
 }
 
 /** Supply that still exists after keeper buybacks, tier burns and exits. */

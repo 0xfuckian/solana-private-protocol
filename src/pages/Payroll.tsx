@@ -1,3 +1,9 @@
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { useSolzk } from "@/lib/solzk-context";
+import { buildProof, commitmentFor, sealNoteFor } from "@/lib/wallet";
+import { spendStatement } from "@/lib/spend";
+import { payrollBatchDomain, payrollDispatchSummary } from "@/lib/payroll";
 import { useState } from "react";
 import { Link } from "react-router";
 import { FileUp, ArrowUpRight, Download } from "lucide-react";
@@ -8,6 +14,10 @@ import { parsePayrollCsv, payrollSummary, type PayrollRow } from "@/lib/payroll"
 import { shortAddress, formatTokenAmount } from "@/lib/protocol";
 
 export default function Payroll() {
+  const slk = useSolzk();
+  const dispatch = useMutation(api.payroll.dispatch);
+  const [busy, setBusy] = useState(false);
+  const [receipt, setReceipt] = useState<{ recipients: number; totalTokens: number; feeTokens: number; slot: number } | null>(null);
   const [csv, setCsv] = useState("payee,amount,memo\n");
   const [rows, setRows] = useState<PayrollRow[]>([]);
   const [error, setError] = useState("");
@@ -15,6 +25,23 @@ export default function Payroll() {
   function preview() {
     try { const parsed = parsePayrollCsv(csv); payrollSummary(parsed); setRows(parsed); setError(""); }
     catch (e) { setRows([]); setError(e instanceof Error ? e.message : "Invalid CSV"); }
+  }
+  async function sendBatch() {
+    if (!slk.address || !summary) return;
+    setBusy(true); setError("");
+    try {
+      const { debit } = payrollDispatchSummary(rows);
+      const spend = await slk.buildSpend(debit);
+      const outputs = await Promise.all(rows.map(async row => {
+        const r = crypto.randomUUID();
+        return { payee: row.payee, amount: row.amount, commitment: await commitmentFor(row.amount, r, row.payee),
+          sealed: await sealNoteFor(row.payee, { value: row.amount, memo: row.memo || "payroll", r }) };
+      }));
+      const { proof } = await buildProof(spendStatement(payrollBatchDomain(slk.address, outputs), spend));
+      const result = await dispatch({ outputs, nullifiers: spend.nullifiers, inputTotal: spend.inputTotal, change: spend.change, proof });
+      setReceipt(result); slk.refreshNotes(); setRows([]);
+    } catch (e) { setError(e instanceof Error ? e.message : "Payroll dispatch failed"); }
+    finally { setBusy(false); }
   }
   function download() {
     if (!summary) return;
@@ -25,7 +52,8 @@ export default function Payroll() {
   return <SiteLayout><PageShell>
     <p className="text-xs uppercase tracking-[0.24em] text-primary">Business workspace / request preparation</p>
     <h1 className="mt-4 text-4xl">Payroll</h1>
-    <p className="mt-4 max-w-2xl leading-7 text-muted-foreground">Prepare up to 100 payment requests locally. Names and CSV data are not uploaded. These links ask a sender to pay an address; they are not funded employee claim links.</p>
+    <p className="mt-4 max-w-2xl leading-7 text-muted-foreground">Prepare up to 100 request links locally, or dispatch up to 20 demo payments atomically. Requests are not funded claims. Dispatch uploads payees, amounts and encrypted notes to the simulation ledger; it is not anonymous or real payroll.</p>
+    {receipt && <div role="status" className="mt-6 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm">Demo batch dispatched: {receipt.recipients} notes · {formatTokenAmount(receipt.totalTokens)} SOLZK · {receipt.feeTokens} fee tokens · slot {receipt.slot}. <button className="ml-2 text-primary underline" onClick={() => setReceipt(null)}>Prepare another batch</button></div>}
     <div className="mt-8 grid gap-6 lg:grid-cols-2">
       <section className="rounded-2xl border border-border bg-card p-6">
         <h2 className="text-xl">01 / Import roster</h2>
@@ -37,8 +65,8 @@ export default function Payroll() {
       </section>
       <section className="rounded-2xl border border-border bg-card p-6">
         <h2 className="text-xl">02 / Review requests</h2>
-        {summary ? <><p className="mt-5 text-3xl font-mono">{formatTokenAmount(summary.total)} <span className="text-sm text-muted-foreground">SOLZK requested</span></p><p className="mt-2 text-xs text-muted-foreground">Proposed batch fee: {formatTokenAmount(summary.proposedFeeTokens)} SOLZK (1%). Not collected; current individual transfers retain their existing fees.</p><div className="mt-5 max-h-80 space-y-2 overflow-auto">{summary.requests.map(row => <Link key={row.payee} className="flex items-center justify-between rounded-lg bg-secondary p-3 text-sm hover:bg-primary/10" to={`/pay#${row.fragment}`}><span className="font-mono">{shortAddress(row.payee)}</span><span>{formatTokenAmount(row.amount)} <ArrowUpRight className="ml-2 inline size-4"/></span></Link>)}</div><Button variant="outline" className="mt-5" onClick={download}><Download className="mr-2 size-4"/>Export request links</Button></> : <p className="mt-6 text-sm text-muted-foreground">Your validated batch will appear here.</p>}
-        <div className="mt-6 rounded-lg border border-amber-400/20 bg-amber-400/5 p-4 text-sm leading-6 text-amber-200">Funded, atomic payroll and employee claims remain disabled until note ownership, value conservation and escrow are verifiable. Do not use this demo for salaries or sensitive employee information.</div>
+        {summary ? <><p className="mt-5 text-3xl font-mono">{formatTokenAmount(summary.total)} <span className="text-sm text-muted-foreground">SOLZK requested</span></p><p className="mt-2 text-xs text-muted-foreground">Dispatch fee: {formatTokenAmount(summary.proposedFeeTokens)} SOLZK (1%), added to the batch total. Link creation is free; individual links retain normal transfer fees.</p><div className="mt-5 max-h-80 space-y-2 overflow-auto">{summary.requests.map(row => <Link key={row.payee} className="flex items-center justify-between rounded-lg bg-secondary p-3 text-sm hover:bg-primary/10" to={`/pay#${row.fragment}`}><span className="font-mono">{shortAddress(row.payee)}</span><span>{formatTokenAmount(row.amount)} <ArrowUpRight className="ml-2 inline size-4"/></span></Link>)}</div><Button variant="outline" className="mt-5" onClick={download}><Download className="mr-2 size-4"/>Export request links</Button><Button className="ml-2 mt-5" disabled={busy || slk.phase !== "unlocked" || rows.length > 20 || !!receipt || slk.balance < summary.total + summary.proposedFeeTokens} onClick={() => void sendBatch()}>{busy ? "Dispatching…" : "Dispatch demo batch"}</Button><p className="mt-3 text-xs text-muted-foreground">Unlock your wallet to dispatch. Maximum 20 payees per transaction; all outputs and change commit together or none do.</p></> : <p className="mt-6 text-sm text-muted-foreground">Your validated batch will appear here.</p>}
+        <div className="mt-6 rounded-lg border border-amber-400/20 bg-amber-400/5 p-4 text-sm leading-6 text-amber-200">Demo dispatch credits notes directly to payees; it does not create bearer claim links. Legacy hash proofs are not secure authorization. Real funded payroll and employee unshielding require reviewed encryption, ownership proofs and Solana custody. Do not use for real salaries.</div>
       </section>
     </div>
   </PageShell></SiteLayout>;

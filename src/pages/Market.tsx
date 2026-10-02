@@ -770,7 +770,6 @@ function MarketInner() {
         <SwapCard />
         <RedeemCard />
       </div>
-    </div>
 
       <div className="space-y-6">
         <Card>
@@ -948,6 +947,7 @@ function MarketInner() {
             </CardContent>
           </Card>
         </div>
+      </div>
       </div>
     </div>
   );
