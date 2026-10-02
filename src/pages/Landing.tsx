@@ -66,23 +66,21 @@ function Hero() {
         >
           <GradientBadge>
             <span className="size-1.5 rounded-full bg-primary sol-pulse" />
-            Mint live · Slot {slot.toLocaleString()}
+            Research simulation · Slot {slot.toLocaleString()}
           </GradientBadge>
 
           <h1 className="max-w-3xl text-4xl font-semibold leading-[1.08] tracking-tight sm:text-6xl">
-            A private ledger that{" "}
+            Private finance.{" "}
             <span className="text-sol-gradient sol-shimmer">
-              settles on Solana
+              Built in the open.
             </span>
           </h1>
 
           <p className="max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8">
-            Every ordinary Solana transaction is a public record of who paid
-            whom and how much. {TICKER} keeps the settlement and drops the
-            disclosure: value moves as encrypted notes inside ordinary
-            transactions, proven correct by zero-knowledge proofs. Mint it,
-            send it, deposit it, trade it — there is no exit to ordinary
-            SOL, and that is the point.
+            Explore the {TICKER} research workspace: mint simulations, note flows,
+            market experiments and payroll request batches. The path to Solana
+            settlement starts with verifiable engineering—not promises.
+            Real custody, audited proofs and private encryption are not yet available.
           </p>
 
           <div className="flex flex-wrap items-center gap-3 pt-2">
@@ -97,7 +95,7 @@ function Hero() {
               </Link>
             </Button>
             <Button asChild size="lg" variant="outline">
-              <Link to="/mint">Mint {TICKER}</Link>
+              <Link to="/docs">Read the handbook</Link>
             </Button>
             <Button asChild size="lg" variant="ghost">
               <Link to="/protocol">Read the protocol</Link>

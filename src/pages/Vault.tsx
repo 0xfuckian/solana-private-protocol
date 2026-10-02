@@ -505,29 +505,16 @@ function AssetShieldCard() {
           <Layers className="size-4 text-primary" />
         </div>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          Wrap any SPL asset into the sealed-note format. The asset id is a
-          public input to the join-split; amounts and owners stay hidden.
-          Devnet ships three mock assets with a faucet.
+          Choose a mock asset before shielding. Units are simulated, not real
+          SPL tokens. Asset classification currently uses a memo, not a proven
+          circuit asset ID; the demo does not protect amounts or ownership.
         </p>
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          {["USDC", "BONK", "JUP"].map((s) => (
-            <button
-              key={s}
-              onClick={() => {
-                setSymbol(s);
-                setUnits("");
-              }}
-              className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
-                symbol === s
-                  ? "border-primary/50 bg-primary/10 text-primary"
-                  : "border-border/70 text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
+        <label className="mt-4 block text-xs text-muted-foreground">Asset to shield / unshield
+          <select aria-label="Asset to shield" value={symbol} onChange={e => { setSymbol(e.target.value); setUnits(""); }} className="mt-2 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">
+            {["USDC", "BONK", "JUP"].map(s => <option key={s} value={s}>{s} · mock asset</option>)}
+          </select>
+        </label>
 
         <div className="mt-3 space-y-1 rounded-lg border border-border/60 bg-background px-3 py-2 text-xs">
           <div className="flex justify-between">
@@ -560,7 +547,7 @@ function AssetShieldCard() {
               setBusy("shield");
               try {
                 await slk.shieldAsset(symbol, unitsNum);
-                toast.success(`${symbol} shielded — the note hides amount and owner.`);
+                toast.success(`${symbol} mock units shielded.`);
                 setUnits("");
               } catch (e) {
                 toast.error(e instanceof Error ? e.message : "Shield failed");

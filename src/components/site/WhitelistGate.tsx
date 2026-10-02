@@ -16,7 +16,7 @@ export function WhitelistGate({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   const allowedPath =
-    location.pathname === "/whitelist" || location.pathname === "/auth";
+    location.pathname === "/whitelist" || location.pathname === "/auth" || location.pathname === "/docs";
 
   if (gate === undefined || user === undefined) {
     return (

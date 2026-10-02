@@ -30,8 +30,9 @@ const NAV = [
   { to: "/market", label: "Market" },
   { to: "/vault", label: "Vault" },
   { to: "/pay", label: "Pay" },
+  { to: "/payroll", label: "Payroll" },
   { to: "/explorer", label: "Explorer" },
-  { to: "/protocol", label: "Protocol" },
+  { to: "/docs", label: "Docs" },
 ];
 
 function Logo() {
@@ -201,7 +202,7 @@ export function SiteFooter() {
           <div>
             <p className="text-sm font-semibold font-display">{SITE_NAME}</p>
             <p className="text-xs text-muted-foreground">
-              A private ledger that settles on Solana
+              Privacy protocol research workspace
             </p>
           </div>
         </div>
@@ -212,7 +213,7 @@ export function SiteFooter() {
           <Link to="/vault" className="hover:text-foreground">Vault</Link>
           <Link to="/pay" className="hover:text-foreground">Pay</Link>
           <Link to="/explorer" className="hover:text-foreground">Explorer</Link>
-          <Link to="/protocol" className="hover:text-foreground">Protocol</Link>
+          <Link to="/docs" className="hover:text-foreground">Handbook</Link>
         </nav>
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
@@ -225,9 +226,9 @@ export function SiteFooter() {
       </div>
       <p className="mx-auto mt-6 w-full max-w-6xl px-4 text-xs leading-5 text-muted-foreground/70 sm:px-6">
         {SITE_NAME} is a demonstration protocol. Nothing on this site is
-        financial advice or an offer of securities. The devnet simulates
-        Solana finality locally; the real protocol settles on Solana with
-        zero-knowledge proofs.
+        financial advice or an offer of securities. Settlement, assets and legacy
+        proofs are simulated. No production privacy protocol is deployed.
+        Read the handbook before using the research workspace.
       </p>
     </footer>
   );

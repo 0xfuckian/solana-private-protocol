@@ -1,9 +1,9 @@
+import { assertUnits, isSolzkNote, relayerFeeTokens } from "./safety";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import {
   CONFIRMATIONS_REQUIRED,
-  RELAYER_FEE_NOTE_TOKENS,
   SLOT_SECONDS,
   TICKER,
   TOTAL_SUPPLY,
@@ -332,7 +332,7 @@ export function useSolzk() {
             : 1,
       );
       setNotes(mine);
-      setBalance(mine.reduce((acc, n) => acc + n.value, 0));
+      setBalance(mine.filter(isSolzkNote).reduce((acc, n) => acc + n.value, 0));
       setTagMatches(tags);
       setScanning(false);
     })();
@@ -387,12 +387,13 @@ export function useSolzk() {
       opts?: { feeInNote?: boolean },
     ) => {
       if (!address || !spendKeyRef.current) throw new Error("Wallet locked");
+      assertUnits(amount);
       if (balance < amount) throw new Error("Insufficient shielded balance");
 
       // Same fee the node will compute, from the same public tier state.
       const discount = discountTierForBurned(serverWallet?.burnedTokens ?? 0);
       const fee = transferFeeTokens(amount, discount.discountBps);
-      const relayerFee = opts?.feeInNote ? RELAYER_FEE_NOTE_TOKENS : 0;
+      const relayerFee = opts?.feeInNote ? relayerFeeTokens(amount) : 0;
       const net = amount - fee - relayerFee;
       if (net <= 0) {
         throw new Error(
@@ -401,7 +402,7 @@ export function useSolzk() {
       }
 
       // Greedy note selection.
-      const sorted = [...notes].sort((a, b) => b.value - a.value);
+      const sorted = notes.filter(isSolzkNote).sort((a, b) => b.value - a.value);
       const selected: MyNote[] = [];
       let acc = 0;
       for (const n of sorted) {
@@ -430,7 +431,7 @@ export function useSolzk() {
           ? await sealNoteFor(address, { value: change, memo: "change", r })
           : null;
       const changeCommitment = changeNote
-        ? await commitmentFor(change, "change:" + r, address)
+        ? await commitmentFor(change, r, address)
         : "";
 
       // The proof commits to every byte of the statement.
@@ -456,8 +457,9 @@ export function useSolzk() {
   /** Select notes and produce nullifiers for a shielded spend of `amount`. */
   const buildSpend = useCallback(
     async (amount: number) => {
+      assertUnits(amount);
       if (!spendKeyRef.current) throw new Error("Wallet locked");
-      const sorted = [...notes].sort((a, b) => b.value - a.value);
+      const sorted = notes.filter(isSolzkNote).sort((a, b) => b.value - a.value);
       const selected: MyNote[] = [];
       let acc = 0;
       for (const n of sorted) {
@@ -480,7 +482,8 @@ export function useSolzk() {
   const burnForTier = useCallback(
     async (amountTokens: number) => {
       if (!address || !spendKeyRef.current) throw new Error("Wallet locked");
-      const { nullifiers } = await buildSpend(amountTokens);
+      const { nullifiers, acc } = await buildSpend(amountTokens);
+      if (acc !== amountTokens) throw new Error("This demo operation requires exact-value notes; change outputs are not yet supported. No notes were spent.");
       const statement = `burn:${address}:${amountTokens}:${nullifiers.join(",")}`;
       const { proof } = await buildProof(statement);
       const res = await burnForTierMut({ amountTokens, nullifiers, proof });
@@ -502,7 +505,8 @@ export function useSolzk() {
   const redeemTokens = useCallback(
     async (amountTokens: number) => {
       if (!address || !spendKeyRef.current) throw new Error("Wallet locked");
-      const { nullifiers } = await buildSpend(amountTokens);
+      const { nullifiers, acc } = await buildSpend(amountTokens);
+      if (acc !== amountTokens) throw new Error("This demo operation requires exact-value notes; change outputs are not yet supported. No notes were spent.");
       const statement = `redeem:${address}:${amountTokens}:${nullifiers.join(",")}`;
       const { proof } = await buildProof(statement);
       const res = await redeemMut({ amountTokens, nullifiers, proof });
@@ -530,11 +534,12 @@ export function useSolzk() {
       opts?: { feeInNote?: boolean },
     ) => {
       if (!address || !spendKeyRef.current) throw new Error("Wallet locked");
+      assertUnits(amount);
       if (balance < amount) throw new Error("Insufficient shielded balance");
 
       const discount = discountTierForBurned(serverWallet?.burnedTokens ?? 0);
       const fee = transferFeeTokens(amount, discount.discountBps);
-      const relayerFee = opts?.feeInNote ? RELAYER_FEE_NOTE_TOKENS : 0;
+      const relayerFee = opts?.feeInNote ? relayerFeeTokens(amount) : 0;
       const net = amount - fee - relayerFee;
       if (net <= 0) {
         throw new Error(
@@ -612,8 +617,10 @@ export function useSolzk() {
   /** Deposit SOLZK into the vault — like adding liquidity to a pool. */
   const depositToVault = useCallback(
     async (amount: number) => {
+      assertUnits(amount);
       if (balance < amount) throw new Error("Insufficient shielded balance");
-      const { nullifiers } = await buildSpend(amount);
+      const { nullifiers, acc } = await buildSpend(amount);
+      if (acc !== amount) throw new Error("Vault deposit requires exact-value notes until change outputs are supported. No notes were spent.");
       const statement = `deposit:${address}:${amount}:${nullifiers.join(",")}`;
       const { proof } = await buildProof(statement);
       await depositMut({ amountTokens: amount, nullifiers, proof });
@@ -687,7 +694,7 @@ export function useSolzk() {
       if (!address) throw new Error("Wallet locked");
       // The witness is the largest note we hold — the commitment must be a
       // real note in the pool at (or before) the anchor slot.
-      const biggest = [...notes].sort((a, b) => b.value - a.value)[0];
+      const biggest = notes.filter(isSolzkNote).sort((a, b) => b.value - a.value)[0];
       if (!biggest || biggest.value < tokens) {
         throw new Error("No single note covers that claim size.");
       }
@@ -708,6 +715,7 @@ export function useSolzk() {
   /** Shield a transparent asset balance into a sealed note. */
   const shieldAsset = useCallback(
     async (symbol: string, units: number) => {
+      assertUnits(units);
       if (!address) throw new Error("Wallet locked");
       const r = crypto.randomUUID();
       const sealed = await sealNoteFor(address, {
@@ -728,12 +736,13 @@ export function useSolzk() {
   const unshieldAsset = useCallback(
     async (symbol: string, units: number) => {
       if (!address || !spendKeyRef.current) throw new Error("Wallet locked");
+      assertUnits(units);
       // Find the asset note covering the units.
       const note = notes.find(
-        (n) => n.memo === `asset:${symbol}` && n.value >= units,
+        (n) => n.memo === `asset:${symbol}` && n.value === units,
       );
       if (!note) {
-        throw new Error(`No sealed ${symbol} note covers that amount — shield first.`);
+        throw new Error(`Unshield requires an exact-value ${symbol} note until asset change outputs are supported.`);
       }
       const nullifier = await nullifierFor(note.commitment, spendKeyRef.current);
       const statement = `unshield:${address}:${symbol}:${units}:${nullifier}`;
@@ -819,7 +828,8 @@ export function useSolzk() {
         }>;
       }
       const tokensIn = Math.round(amount);
-      const { nullifiers } = await buildSpend(tokensIn);
+      const { nullifiers, acc } = await buildSpend(tokensIn);
+      if (acc !== tokensIn) throw new Error("Token swap requires exact-value notes until change outputs are supported. No notes were spent.");
       const statement = `swap-tokens:${address}:${tokensIn}:${nullifiers.join(",")}`;
       const { proof } = await buildProof(statement);
       return swapTokensForSolMut({

@@ -3,6 +3,11 @@
  * Protocol constants shared by frontend and backend (pure data, no imports).
  */
 
+import { mulDivFloor } from "./safety";
+
+/** Legacy simulation scale. Do not use for Solana RPC amounts. */
+export const SOLANA_LAMPORTS_PER_SOL = 1_000_000_000;
+
 export const SITE_NAME = "SOL-ZK";
 export const TICKER = "SOLZK";
 
@@ -309,7 +314,7 @@ export function decodePayLink(fragment: string): PayLinkPayload | null {
     );
     const obj = JSON.parse(json) as { t?: string; a?: number; m?: string };
     if (typeof obj.t !== "string" || obj.t.length !== ADDRESS_LEN) return null;
-    if (typeof obj.a !== "number" || !Number.isFinite(obj.a) || obj.a <= 0)
+    if (typeof obj.a !== "number" || !Number.isSafeInteger(obj.a) || obj.a <= 0)
       return null;
     return {
       to: obj.t,
@@ -354,12 +359,10 @@ export function quoteSwapSolForTokens(
   solReserve: number,
   tokenReserve: number,
 ): SwapQuote | null {
-  if (solLamportsIn <= 0 || solReserve <= 0 || tokenReserve <= 0) return null;
+  if (![solLamportsIn, solReserve, tokenReserve, solReserve + solLamportsIn].every(Number.isSafeInteger) || solLamportsIn <= 0 || solReserve <= 0 || tokenReserve <= 0) return null;
   const feeLamports = Math.ceil((solLamportsIn * SWAP_FEE_BPS) / 10_000);
   const netIn = solLamportsIn - feeLamports;
-  const k = solReserve * tokenReserve;
-  const newTokens = Math.floor(k / (solReserve + netIn));
-  const tokensOut = tokenReserve - newTokens;
+  const tokensOut = mulDivFloor(tokenReserve, netIn, solReserve + netIn);
   if (tokensOut <= 0) return null;
   const mid = solReserve / tokenReserve;
   const eff = solLamportsIn / tokensOut;
@@ -378,10 +381,8 @@ export function quoteSwapTokensForSol(
   solReserve: number,
   tokenReserve: number,
 ): SwapQuote | null {
-  if (tokensIn <= 0 || solReserve <= 0 || tokenReserve <= 0) return null;
-  const k = solReserve * tokenReserve;
-  const newSol = Math.floor(k / (tokenReserve + tokensIn));
-  const grossSolOut = solReserve - newSol;
+  if (![tokensIn, solReserve, tokenReserve, tokenReserve + tokensIn].every(Number.isSafeInteger) || tokensIn <= 0 || solReserve <= 0 || tokenReserve <= 0) return null;
+  const grossSolOut = mulDivFloor(solReserve, tokensIn, tokenReserve + tokensIn);
   if (grossSolOut <= 0) return null;
   const feeLamports = Math.ceil((grossSolOut * SWAP_FEE_BPS) / 10_000);
   const lamportsOut = grossSolOut - feeLamports;

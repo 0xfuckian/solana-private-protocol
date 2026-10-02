@@ -1,3 +1,4 @@
+import { appendNote } from "./merkle";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
@@ -315,7 +316,7 @@ export const settleTrade = mutation({
       createdAt: Date.now(),
     });
 
-    await ctx.db.insert("notes", { commitment, sealed: sealedNote, slot, createdAt: Date.now() });
+    await appendNote(ctx, { commitment, sealed: sealedNote, slot, createdAt: Date.now() });
 
     // Release escrow to the seller (net of the 2% fee).
     const seller = await ctx.db.get(trade.sellerWalletId);

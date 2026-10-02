@@ -1,8 +1,11 @@
+import { appendNote } from "./merkle";
+import { assertNullifiers, assertSealedNote } from "../lib/safety";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import {
   ensureProtocolState,
+  ensureVaultPool,
   getWalletForUserOrThrow,
   readProtocolState,
   requireUserId,
@@ -117,6 +120,7 @@ export const swapSolForTokens = mutation({
     if (wallet.fundingLamports < solLamportsIn) {
       throw new Error("Insufficient SOL for this swap.");
     }
+    assertSealedNote(sealedNote);
     if (sealedNote.ciphertext.length !== CIPHERTEXT_B64_LEN) {
       throw new Error("Sealed note ciphertext must be 512 bytes.");
     }
@@ -152,7 +156,7 @@ export const swapSolForTokens = mutation({
       `swap:${wallet.address}:${Date.now()}:${Math.floor(Math.random() * 0xffffff)}`,
     );
 
-    await ctx.db.insert("notes", {
+    await appendNote(ctx, {
       commitment,
       sealed: sealedNote,
       slot,
@@ -213,6 +217,7 @@ export const swapTokensForSol = mutation({
     if (!Number.isInteger(tokensIn) || tokensIn < MIN_SWAP_TOKENS) {
       throw new Error(`Minimum swap is ${MIN_SWAP_TOKENS.toLocaleString()} SOLZK.`);
     }
+    assertNullifiers(nullifiers);
     for (const n of nullifiers) {
       const existing = await ctx.db
         .query("nullifiers")
@@ -295,8 +300,5 @@ function nowSlotOf(genesisMs: number): number {
 
 /** Load the vault pool if it exists — swaps route fees through it. */
 async function ensurePoolRef(ctx: MutationCtx) {
-  return ctx.db
-    .query("vaultPool")
-    .withIndex("by_key", (q) => q.eq("key", "global"))
-    .unique();
+  return ensureVaultPool(ctx);
 }

@@ -1,118 +1,34 @@
-# SOL-ZK
+# SOL-ZK research workspace
 
-**A private ledger that settles on Solana.** Value moves as encrypted notes
-carried inside ordinary transactions, proven correct by zero-knowledge
-proofs. Solana orders the bytes; it never sees inside them.
+React + Vite + Convex simulation of a Solana privacy-protocol product. **Not production, not audited, not private encryption, and not real Solana settlement. Do not use real funds or sensitive information.**
 
-This repository is the full protocol site and devnet simulation: mint,
-shielded wallet, private market, liquidity vault, explorer, pay links,
-private swap, multi-asset shield, stealth addresses, and ZK fee-share
-claims — every mechanism of the design, runnable end to end.
+## Implemented in this foundation pass
+- Uploaded `public/Glitch.ttf` self-hosted for display typography. Confirm commercial font licensing before launch.
+- Depth-26 persistent Poseidon Merkle scaffold for newly inserted notes, indexed current paths and last-100-root retention. Existing notes require migration; legacy commitments are SHA-256 mapped into Fr, not native circuit commitments.
+- snarkjs Groth16 client adapter requiring explicit WASM, zkey and verification key. No join-split circuit artifacts included. Production verifier endpoint deliberately rejects; demo hash endpoints remain insecure.
+- Integer checks, duplicate-input rejection, dynamic fee-in-note quote, SOLZK-only client spend selection, UTF-8-correct ciphertext padding, conservative bigint AMM quote math, whitelist ownership boundaries.
+- Exact-note client guards prevent silent excess-value loss in operations without change outputs. These guards are not server ownership/conservation proofs.
+- Admin pause/resume controls with audit events, blocking operations that use the protocol state helper. Not an audited on-chain or multisig pause. `SOLZK_EXECUTION_MODE=production` blocks the simulation state helper; it does not enable production.
+- `/payroll`: local CSV validation and unfunded payment-request link export. No funded employee claim flow or atomic batch payment; proposed 1% fee is not collected.
+- `/explorer`: indexed 100-row paginated envelope receipts, kind/date filters on loaded pages, decoded public mint and fee summaries. Other event feeds remain limited; asset/tier-wide indexed filtering is outstanding.
+- `/docs`: public handbook, threat model, corrected economics, known defects and mainnet acceptance gates, available during the whitelist gate.
 
-> **No "404" strings appear anywhere in this project** — the ticker is
-> `SOLZK` and the protocol name is SOL-ZK throughout.
+## Important remaining defects
+Legacy encryption is publicly decryptable given the address. Hash proofs are forgeable. Ownership, input value, asset IDs and conservation are not proven. Order settlement lacks seller-input consumption. Server note-consuming operations do not preserve change. Fee-share claims lack secure ownership/anchor validation and funded reserve accounting. Token transfer fees are historically routed as SOL units. Vault number-based fee accounting still needs versioned bigint checkpoints and withdrawal-accrual handling. Some older marketing descriptions elsewhere in the app describe the intended protocol, not implemented guarantees.
 
----
+Legacy simulation uses 1e8 accounting units per displayed SOL. Solana uses 1e9 lamports. Existing stored balances/invoices have not been silently migrated. `SOLANA_LAMPORTS_PER_SOL` is the real-chain constant; a reviewed versioned migration is required.
 
-## What is running
-
-| Feature | Where | Mechanism |
-| --- | --- | --- |
-| Shielded notes | `/mint` → `/dashboard` | 24-word seed → spend key; commitments and AES-GCM sealed notes; nullifier double-spend protection |
-| Mint with fees | `/mint` | Lots at 0.015/0.035 SOL; 5% fee split half vault depositors / half treasury; 95% becomes protocol liquidity |
-| Private transfers | `/dashboard` | Spend notes by nullifier, seal new notes; 2% fee with burn-tier discounts; fee-in-note option (relayer paid from the note itself) |
-| Signed order book | `/market` | Intents, not deposits; SOL leg escrowed and verified, shielded leg proven |
-| Private swap | `/market` | Constant-product AMM over protocol reserves; both directions; 0.3% fee routed like every other fee |
-| Private exit (redeem) | `/market` | Burn notes → SOL from the liquidity reserve; deflationary |
-| Liquidity vault | `/vault` | Deposit notes as shares; pro-rata fee stream in SOL, claimable any time |
-| Keeper buyback-and-burn | `/vault` | Treasury fee vault swept → SOLZK bought from liquidity → burned |
-| Burn-to-discount tiers | `/dashboard` | Ember −25% / Onyx −50% / Obsidian −75%; permanent, public, supply-shrinking |
-| View keys + view tags | `/dashboard` | IVK/OVK decrypt without spend authority; 1-byte tags prioritize scanning |
-| Stealth addresses | `/dashboard` | Meta secret → fresh one-time address per payment; scan recognizes via (meta, nonce) re-derivation |
-| Multi-asset shield | `/vault` | SPL assets (devnet: USDC, BONK, JUP) sealed into notes; shield/unshield flows |
-| ZK fee-share claims | `/vault` | Prove holding at a past anchor; pro-rata payout from the claims pool; nullifier-bound |
-| Association sets (ASP) | `/dashboard` | Public label registry; senders resolve payee labels; assertions, not verdicts |
-| Pay links | `/pay` | Recipient+amount+memo in the URL `#fragment`; one-tap payment |
-| Explorer | `/explorer` | Every byte the chain reveals — envelopes, proofs, burns, swaps, asset flows, fee vaults |
-
-## Protocol constants
-
-| Constant | Value | Note |
-| --- | --- | --- |
-| `TOTAL_SUPPLY` | 210,000,000 SOLZK | 10% of Solana's SOL base |
-| `LOT_SIZE` | 10,000 | Minting unit; 21,000 lots total |
-| Approved / open rate | 0.015 / 0.035 SOL per lot | Approved = whitelist-cleared |
-| `MINT_FEE_BPS` | 500 | Half to vault depositors, half to treasury |
-| `MARKET_FEE_BPS` | 200 | Also the transfer fee; tier-discountable |
-| `SWAP_FEE_BPS` | 30 | AMM fee, same routing |
-| `RELAYER_FEE_NOTE_TOKENS` | 25 SOLZK | Flat fee-in-note relayer fee |
-| `REDEEM_LAMPORTS_PER_TOKEN` | 350 | Exit rate against liquidity |
-| Envelope sizes | 934 B mint / 921 B transfer | Uniform — length leaks nothing |
-
-## Architecture
-
-```
-Browser (trust root)                Convex backend ("the chain")
-────────────────────                ───────────────────────────
-src/lib/wallet.ts                   src/convex/
-  seed → spend key                    protocol.ts   mint, transfers, burns,
-  commitments (SHA-256)                             redeem, claims, shield
-  sealed notes (AES-GCM)              swap.ts       private swap AMM
-  nullifiers                          market.ts     order book + settlement
-  view keys + tags                    vault.ts      shares + fee stream
-  stealth addresses                   asp.ts        label registry
-src/lib/useSolzk.ts                   notes.ts      pool queries
-  scan: tag-match → stealth           users.ts      auth helpers
-  → trial-decrypt                     schema.ts     tables + indexes
-  balance = sum of unspent notes
+## Checks
+```sh
+bun run test
+bun convex dev --once && bun tsc -b --noEmit
 ```
 
-**The node never learns ownership.** It stores commitments, ciphertexts and
-nullifiers; the browser trial-decrypts the pool locally. Balances exist
-only as the sum of notes your key opens.
+51 tests pass: 30 unit/property tests and 21 Convex integration cases. They cover validation, fee conservation, AMM invariants, UTF-8 padding, request parsing, tree paths/root retention, permanent replay rejection, pause/resume and whitelist access isolation. These are not complete end-to-end protocol tests or an audit. Coverage >=80% has not been measured. No browser visual verification was available in this environment.
 
-**Fees route one way:** half of every fee (mint 5%, transfer/trade 2%,
-swap 0.3%) goes to the vault fee pool for depositors; half to the treasury,
-which the keeper converts to SOLZK and burns.
+## Outstanding production work
+Staking contracts/reward funding, insurance funding/claims/governance, funded payroll, collateralized lending/liquidation, multi-pair reserve execution, proved ASP roots, signed governance whitelist oracle, independent signed relayers, secure spend/view encryption and stealth addresses, Anchor custody/verifier program, real RPC settlement and indexed all-event explorer remain outstanding.
 
-## Key files
+Two independent audits, multiparty trusted setup, 5-of-7 governance, upgrade timelock, funded insurance, legal review, bug bounty and real relayer operators require external resources. Nothing in this repository implies those gates have been met. See [the handbook](docs/THREAT_MODEL.md) for the acceptance checklist and corrected revenue calculations.
 
-- `src/lib/protocol.ts` — every constant, plus swap/quote math, tiers,
-  pay-link codec, asset metadata. Shared verbatim by frontend and backend.
-- `src/lib/wallet.ts` — the client cryptography: derivation, sealing,
-  view tags, stealth addresses, proof commitments.
-- `src/lib/useSolzk.ts` — the wallet hook: session, scanning, every action.
-- `src/convex/protocol.ts` / `swap.ts` / `market.ts` / `vault.ts` — the
-  ledger: proof verification, fee routing, reserves.
-- `src/pages/*` — the product surface; `/protocol` is the living spec.
-
-## Development
-
-The project runs in a managed Freebuff environment (Vite + React 19 +
-Tailwind v4 + shadcn/ui + Convex + Convex Auth). Package manager: **bun**.
-
-```bash
-# Regenerate Convex types + deploy backend functions
-bun convex dev --once
-
-# Typecheck
-bun tsc -b --noEmit
-```
-
-Conventions:
-
-- Backend changes require `bun convex dev --once` before frontend code that
-  consumes new queries/mutations.
-- Never edit `src/convex/_generated/*` — it is codegen.
-- Auth is Convex Auth (email OTP); protected routes use `RequireAuth`.
-- One wallet per account; the encrypted seed lives in `localStorage` and
-  the password never leaves the device.
-
-## Simulation notice
-
-This is a **devnet simulation**: slots, confirmations, the AMM, asset
-prices and the faucet are simulated for coherence and speed. The proof
-system is a SHA-256 commitment scheme standing in for a real circuit; the
-ledger discipline (uniform envelopes, nullifier uniqueness, commitments and
-ciphertexts only) is real. Nothing here is financial advice or an offer of
-securities.
+The platform manages development servers. Do not start duplicate dev/preview servers. Secrets belong in the Keys/API keys UI, not committed environment files.

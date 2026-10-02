@@ -1,0 +1,45 @@
+import { useState } from "react";
+import { Link } from "react-router";
+import { FileUp, ArrowUpRight, Download } from "lucide-react";
+import { SiteLayout, PageShell } from "@/components/site/Layout";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { parsePayrollCsv, payrollSummary, type PayrollRow } from "@/lib/payroll";
+import { shortAddress, formatTokenAmount } from "@/lib/protocol";
+
+export default function Payroll() {
+  const [csv, setCsv] = useState("payee,amount,memo\n");
+  const [rows, setRows] = useState<PayrollRow[]>([]);
+  const [error, setError] = useState("");
+  const summary = rows.length ? payrollSummary(rows) : null;
+  function preview() {
+    try { const parsed = parsePayrollCsv(csv); payrollSummary(parsed); setRows(parsed); setError(""); }
+    catch (e) { setRows([]); setError(e instanceof Error ? e.message : "Invalid CSV"); }
+  }
+  function download() {
+    if (!summary) return;
+    const body = JSON.stringify({ version: 1, status: "unfunded-requests", requests: summary.requests.map(row => ({ ...row, url: `${window.location.origin}/pay#${row.fragment}` })) }, null, 2);
+    const url = URL.createObjectURL(new Blob([body], { type: "application/json" }));
+    const a = document.createElement("a"); a.href = url; a.download = "solzk-payroll-requests.json"; a.click(); URL.revokeObjectURL(url);
+  }
+  return <SiteLayout><PageShell>
+    <p className="text-xs uppercase tracking-[0.24em] text-primary">Business workspace / request preparation</p>
+    <h1 className="mt-4 text-4xl">Payroll</h1>
+    <p className="mt-4 max-w-2xl leading-7 text-muted-foreground">Prepare up to 100 payment requests locally. Names and CSV data are not uploaded. These links ask a sender to pay an address; they are not funded employee claim links.</p>
+    <div className="mt-8 grid gap-6 lg:grid-cols-2">
+      <section className="rounded-2xl border border-border bg-card p-6">
+        <h2 className="text-xl">01 / Import roster</h2>
+        <label className="mt-5 flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-primary/40 p-4 text-sm"><FileUp className="size-5 text-primary"/>Choose CSV<input type="file" accept=".csv,text/csv" className="sr-only" onChange={async e => { const file = e.target.files?.[0]; if (file) { if (file.size > 100_000) { setError("100 KB maximum."); return; } setCsv(await file.text()); setRows([]); } }}/></label>
+        <Textarea aria-label="Payroll CSV" className="mt-4 min-h-64 font-mono text-xs" value={csv} onChange={e => { setCsv(e.target.value); setRows([]); }}/>
+        <p className="mt-3 text-xs text-muted-foreground">Columns: payee,amount,memo. Whole SOLZK tokens; one address per employee.</p>
+        {error && <p role="alert" className="mt-4 text-sm text-destructive">{error}</p>}
+        <Button className="mt-5" onClick={preview}>Validate & prepare</Button>
+      </section>
+      <section className="rounded-2xl border border-border bg-card p-6">
+        <h2 className="text-xl">02 / Review requests</h2>
+        {summary ? <><p className="mt-5 text-3xl font-mono">{formatTokenAmount(summary.total)} <span className="text-sm text-muted-foreground">SOLZK requested</span></p><p className="mt-2 text-xs text-muted-foreground">Proposed batch fee: {formatTokenAmount(summary.proposedFeeTokens)} SOLZK (1%). Not collected; current individual transfers retain their existing fees.</p><div className="mt-5 max-h-80 space-y-2 overflow-auto">{summary.requests.map(row => <Link key={row.payee} className="flex items-center justify-between rounded-lg bg-secondary p-3 text-sm hover:bg-primary/10" to={`/pay#${row.fragment}`}><span className="font-mono">{shortAddress(row.payee)}</span><span>{formatTokenAmount(row.amount)} <ArrowUpRight className="ml-2 inline size-4"/></span></Link>)}</div><Button variant="outline" className="mt-5" onClick={download}><Download className="mr-2 size-4"/>Export request links</Button></> : <p className="mt-6 text-sm text-muted-foreground">Your validated batch will appear here.</p>}
+        <div className="mt-6 rounded-lg border border-amber-400/20 bg-amber-400/5 p-4 text-sm leading-6 text-amber-200">Funded, atomic payroll and employee claims remain disabled until note ownership, value conservation and escrow are verifiable. Do not use this demo for salaries or sensitive employee information.</div>
+      </section>
+    </div>
+  </PageShell></SiteLayout>;
+}

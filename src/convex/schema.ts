@@ -36,6 +36,11 @@ const schema = defineSchema(
       role: v.optional(roleValidator),
     }).index("email", ["email"]),
 
+    operationEvents: defineTable({ userId: v.id("users"), kind: v.string(), createdAt: v.number() }).index("by_created", ["createdAt"]),
+    merkleState: defineTable({ key: v.literal("global"), nextIndex: v.number(), root: v.string() }).index("by_key", ["key"]),
+    merkleTreeNodes: defineTable({ level: v.number(), index: v.number(), hash: v.string() }).index("by_position", ["level", "index"]),
+    merkleRoots: defineTable({ root: v.string(), leafCount: v.number(), slot: v.number(), createdAt: v.number() }).index("by_created", ["createdAt"]).index("by_root", ["root"]),
+
     // ---- SOL-ZK protocol ---------------------------------------------------
 
     // Singleton: key === "global"
@@ -71,6 +76,7 @@ const schema = defineSchema(
       // Pre-launch phase control: while false, the whitelist application
       // page is the only page the site serves. The founder flips it.
       whitelistOpen: v.optional(v.boolean()),
+      emergencyPaused: v.optional(v.boolean()),
     }).index("by_key", ["key"]),
 
     // One shielded wallet per app account. The address is the public shielded
@@ -128,11 +134,13 @@ const schema = defineSchema(
       createdAt: v.number(),
     })
       .index("by_signature", ["signature"])
+      .index("by_slot", ["slot"])
       .index("by_created", ["createdAt"]),
 
     // Sealed notes. The ledger stores commitments and ciphertexts only —
     // ownership is established by trial-decrypting in the owner's browser.
     notes: defineTable({
+      leafIndex: v.optional(v.number()),
       commitment: v.string(),
       sealed: sealedNote,
       slot: v.number(),

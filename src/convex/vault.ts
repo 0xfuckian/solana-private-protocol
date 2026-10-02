@@ -1,3 +1,5 @@
+import { appendNote } from "./merkle";
+import { assertNullifiers, assertUnits } from "../lib/safety";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
@@ -130,6 +132,8 @@ export const deposit = mutation({
     await assertVaultOpen(state);
     const pool = await ensureVaultPool(ctx);
 
+    assertUnits(amountTokens);
+    assertNullifiers(nullifiers);
     if (amountTokens <= 0) throw new Error("Amount must be positive.");
     for (const n of nullifiers) {
       const existing = await ctx.db
@@ -169,7 +173,7 @@ export const deposit = mutation({
       await ctx.db.patch(existing._id, {
         shares: existing.shares + mintedShares,
         depositedTokens: existing.depositedTokens + amountTokens,
-        accumulatedFees: accruedTotal,
+        accumulatedFees: existing.accumulatedFees + Math.floor((pool.feePerShare * mintedShares) / 1e12),
       });
     } else {
       await ctx.db.insert("vaultDeposits", {
@@ -350,7 +354,7 @@ export const withdraw = mutation({
 
     // The withdrawn value returns as a sealed note only the depositor can
     // open — private in, private out.
-    await ctx.db.insert("notes", {
+    await appendNote(ctx, {
       commitment,
       sealed: sealedNote,
       slot: Math.floor((Date.now() - state.genesisMs) / 400),

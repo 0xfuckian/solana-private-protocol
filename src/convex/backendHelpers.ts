@@ -50,6 +50,8 @@ export async function ensureProtocolState(
   ctx: MutationCtx,
 ): Promise<Doc<"protocolState">> {
   const existing = await readProtocolState(ctx as unknown as QueryCtx);
+  if (process.env.SOLZK_EXECUTION_MODE === "production") throw new Error("Production execution is unavailable: this ledger has no audited Solana verifier.");
+  if (existing?.emergencyPaused) throw new Error("Protocol emergency pause is active.");
   if (existing) return existing;
   const id = await ctx.db.insert("protocolState", {
     key: "global",

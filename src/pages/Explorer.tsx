@@ -26,7 +26,7 @@ import {
   Shuffle,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "convex/react";
+import { usePaginatedQuery, useQuery } from "convex/react";
 import { Link, useSearchParams } from "react-router";
 
 interface EnvelopeListItem {
@@ -86,9 +86,9 @@ export default function Explorer() {
   const [query, setQuery] = useState("");
 
   const state = useQuery(api.protocol.getState);
-  const envelopes = useQuery(api.protocol.listEnvelopes, { limit: 50 }) as
-    | EnvelopeListItem[]
-    | undefined;
+  const { results: envelopes, status: feedStatus, loadMore } = usePaginatedQuery(api.explorer.listEnvelopes, {}, { initialNumItems: 100 });
+  const [kindFilter, setKindFilter] = useState("all");
+  const [since, setSince] = useState("");
   const burns = useQuery(api.protocol.listBurns, { limit: 10 }) as
     | BurnRow[]
     | undefined;
@@ -106,14 +106,12 @@ export default function Explorer() {
   const filtered = useMemo(() => {
     if (!envelopes) return undefined;
     const q = query.trim().toLowerCase();
-    if (!q) return envelopes;
-    return envelopes.filter(
-      (e) =>
-        e.signature.toLowerCase().includes(q) ||
-        e.kind.toLowerCase().includes(q) ||
-        String(e.slot).includes(q),
+    return envelopes.filter(e =>
+      (kindFilter === "all" || e.kind === kindFilter) &&
+      (!since || e.createdAt >= new Date(`${since}T00:00:00`).getTime()) &&
+      (!q || e.signature.toLowerCase().includes(q) || e.kind.toLowerCase().includes(q) || String(e.slot).includes(q))
     );
-  }, [envelopes, query]);
+  }, [envelopes, query, kindFilter, since]);
 
   const [, force] = useState(0);
   useEffect(() => {
@@ -128,8 +126,8 @@ export default function Explorer() {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Explorer</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Everything the chain reveals — and nothing else. Check every
-            figure yourself; that is the point of settling on-chain.
+            Simulation receipts—not Solana transactions. Filters apply to loaded
+            pages. Public mint prices and fee splits are decoded below.
           </p>
         </div>
         <div className="relative w-full sm:w-80">
@@ -143,6 +141,7 @@ export default function Explorer() {
         </div>
       </div>
 
+      <div className="mb-6 flex flex-wrap items-center gap-3"><select aria-label="Envelope kind" value={kindFilter} onChange={e => setKindFilter(e.target.value)} className="rounded-lg border border-border bg-card px-3 py-2 text-sm"><option value="all">All envelopes</option><option value="mint">Mint</option><option value="transfer">Transfer</option></select><Input aria-label="From date" type="date" value={since} onChange={e => setSince(e.target.value)} className="w-auto"/><span className="text-xs text-muted-foreground">{envelopes.length} receipts loaded</span></div>
       <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
           label="Slot"
@@ -307,7 +306,7 @@ export default function Explorer() {
             <h2 className="text-base font-semibold">Envelope feed</h2>
             <GradientBadge>
               <span className="size-1.5 rounded-full bg-primary sol-pulse" />
-              ordered by Solana, sealed by cryptography
+              indexed simulation receipts
             </GradientBadge>
           </div>
           <div className="overflow-x-auto">
@@ -360,13 +359,16 @@ export default function Explorer() {
                           }`}
                         >
                           {e.kind}
+                          {e.decodedMint ? ` · ${e.decodedMint.lots} lots · ${e.decodedMint.tier}` : ""}
                           {e.feeInNote ? " · in-note" : ""}
                         </span>
                       </td>
                       <td className="px-6 py-3">{e.slot.toLocaleString()}</td>
                       <td className="px-6 py-3">{e.payloadSize} B</td>
                       <td className="px-6 py-3">
-                        {lamportsToSol(e.feeLamports)} SOL
+                        {e.feeDenomination === "SOLZK" ? `${formatTokenAmount(e.feeLamports)} SOLZK` : `${lamportsToSol(e.feeLamports)} demo SOL`}
+                        <p className="mt-1 text-[10px] text-muted-foreground">Vault {e.feeSplit.vault} / treasury {e.feeSplit.treasury} {e.feeDenomination}</p>
+                        {e.decodedMint && <p className="mt-1 text-[10px] text-muted-foreground">Price {lamportsToSol(e.decodedMint.priceUnits)} demo SOL</p>}
                       </td>
                       <td className="px-6 py-3 text-muted-foreground">
                         {fmtTime(e.createdAt)}
@@ -383,6 +385,7 @@ export default function Explorer() {
         </CardContent>
       </Card>
 
+      <div className="my-5 flex justify-center"><Button variant="outline" disabled={feedStatus !== "CanLoadMore"} onClick={() => loadMore(100)}>{feedStatus === "LoadingMore" ? "Loading…" : feedStatus === "Exhausted" ? "All receipts loaded" : "Load 100 more"}</Button></div>
       <Card>
         <CardContent className="p-0">
           <div className="flex items-center justify-between px-6 py-4">
@@ -620,12 +623,12 @@ export default function Explorer() {
           <CardContent className="p-6">
             <div className="flex items-center gap-2 text-[#c9b4ff]">
               <ShieldCheck className="size-4" />
-              <p className="text-sm font-semibold">Never revealed</p>
+              <p className="text-sm font-semibold">Not protected in this demo</p>
             </div>
             <ul className="mt-3 space-y-1.5 text-sm text-muted-foreground">
-              <li>Who owns a note, or your balance at any time</li>
-              <li>Sender and receiver of a transfer</li>
-              <li>The amount transferred, or which token moved</li>
+              <li>Public-address-derived encryption can expose note balances</li>
+              <li>Authenticated transfers retain sender and receiver metadata</li>
+              <li>Transfer and asset amounts can be recovered from demo data</li>
               <li>Which earlier note was spent</li>
               <li>Who swapped, or which stealth address was paid</li>
               <li>Unshield destinations' note history</li>

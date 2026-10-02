@@ -81,6 +81,7 @@ export const submitApplication = mutation({
       .withIndex("by_wallet", (q) => q.eq("walletAddress", address))
       .first();
     if (existing) {
+      if (existing.userId !== userId) throw new Error("This address has an application owned by another account.");
       if (existing.status === "approved") {
         throw new Error("This wallet is already approved — you're clear.");
       }
@@ -127,12 +128,12 @@ export const getMyApplication = query({
           .collect()),
       );
     }
-    if (address) {
+    if (address && userId !== null) {
       const byAddress = await ctx.db
         .query("whitelistApplications")
         .withIndex("by_wallet", (q) => q.eq("walletAddress", address))
         .first();
-      if (byAddress) found.push(byAddress);
+      if (byAddress?.userId === userId) found.push(byAddress);
     }
     if (found.length === 0) return null;
     const latest = found.sort((a, b) => b.createdAt - a.createdAt)[0];

@@ -93,7 +93,10 @@ export const WORDLIST: string[] = WORDLIST_STR.split(" ");
 export function generateSeedWords(): string[] {
   const words: string[] = [];
   while (words.length < 24) {
-    const w = WORDLIST[Math.floor(Math.random() * WORDLIST.length)];
+    const limit = Math.floor(0x100000000 / WORDLIST.length) * WORDLIST.length;
+    let sample: number;
+    do { sample = crypto.getRandomValues(new Uint32Array(1))[0]; } while (sample >= limit);
+    const w = WORDLIST[sample % WORDLIST.length];
     if (!words.includes(w)) words.push(w);
   }
   return words;
@@ -356,14 +359,16 @@ export async function sealNoteFor(
     ["encrypt", "decrypt"],
   );
   const json = JSON.stringify(note);
-  if (json.length > NOTE_PLAINTEXT_BYTES) {
+  const encoded = textEncoder.encode(json);
+  if (encoded.length > NOTE_PLAINTEXT_BYTES) {
     throw new Error("Note memo too long");
   }
-  const padded = json.padEnd(NOTE_PLAINTEXT_BYTES, " ");
+  const padded = new Uint8Array(NOTE_PLAINTEXT_BYTES).fill(32);
+  padded.set(encoded);
   const ct = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv: iv as unknown as ArrayBuffer },
     key,
-    textEncoder.encode(padded),
+    padded,
   );
   return {
     ephemeral: taggedB64,
@@ -459,7 +464,7 @@ export async function tryUnsealNote(
       memo: string;
       r: string;
     };
-    if (typeof parsed.value !== "number") return null;
+    if (!Number.isSafeInteger(parsed.value) || parsed.value <= 0 || typeof parsed.memo !== "string" || typeof parsed.r !== "string") return null;
     return parsed;
   } catch {
     return null;

@@ -1,3 +1,5 @@
+import { appendNote } from "./merkle";
+import { assertNullifiers, assertUnits, assertSealedNote, relayerFeeTokens as dynamicRelayerFee } from "../lib/safety";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
@@ -223,6 +225,7 @@ export const registerWallet = mutation({
     fundingLamports: v.number(),
   },
   handler: async (ctx, { address, commitment, fundingLamports }) => {
+    assertUnits(fundingLamports, "Demo funding", true);
     const userId = await requireUserId(ctx);
     if (address.length !== ADDRESS_LEN) {
       throw new Error("Invalid address");
@@ -253,7 +256,7 @@ export const registerWallet = mutation({
       createdAt: Date.now(),
     });
     // Sealed registration note — also the devnet faucet receipt.
-    await ctx.db.insert("notes", {
+    await appendNote(ctx, {
       commitment,
       sealed: {
         ephemeral: "faucet",
@@ -274,6 +277,8 @@ export const registerWallet = mutation({
 export const faucet = mutation({
   args: { lamports: v.number() },
   handler: async (ctx, { lamports }) => {
+    assertUnits(lamports);
+    await ensureProtocolState(ctx);
     const userId = await requireUserId(ctx);
     const wallet = await getWalletForUserOrThrow(ctx, userId);
     if (lamports <= 0 || lamports > 50_000_000_000) {
@@ -478,7 +483,7 @@ export const settleInvoice = mutation({
     });
 
     // Sealed note — only the buyer's browser can open it.
-    await ctx.db.insert("notes", {
+    await appendNote(ctx, {
       commitment: invoice.commitment,
       sealed,
       slot,
@@ -544,11 +549,14 @@ export const sendPrivate = mutation({
     if (args.receiver.length !== ADDRESS_LEN) {
       throw new Error("Receiver address looks invalid.");
     }
+    assertUnits(args.amount);
+    assertSealedNote(args.sealedNote);
     if (args.amount <= 0) {
       throw new Error("Amount must be positive.");
     }
 
     // Prove the nullifiers are fresh — the double-spend check.
+    assertNullifiers(args.nullifiers);
     for (const n of args.nullifiers) {
       const existing = await ctx.db
         .query("nullifiers")
@@ -596,7 +604,7 @@ export const sendPrivate = mutation({
     if (feeInNote) {
       // The note pays the relayer a flat SOLZK fee; the protocol covers the
       // chain fee. A wallet with zero SOL stays fully spendable.
-      relayerFeeTokens = RELAYER_FEE_NOTE_TOKENS;
+      relayerFeeTokens = dynamicRelayerFee(args.amount);
       if (args.amount - transferFee - relayerFeeTokens <= 0) {
         throw new Error(
           `Amount too small — fee-in-note needs room for the ${RELAYER_FEE_NOTE_TOKENS} SOLZK relayer fee on top of the protocol fee.`,
@@ -632,14 +640,14 @@ export const sendPrivate = mutation({
     for (const n of args.nullifiers) {
       await ctx.db.insert("nullifiers", { value: n, slot });
     }
-    await ctx.db.insert("notes", {
+    await appendNote(ctx, {
       commitment: args.receiverCommitment,
       sealed: args.sealedNote,
       slot,
       createdAt: Date.now(),
     });
     if (hasChange) {
-      await ctx.db.insert("notes", {
+      await appendNote(ctx, {
         commitment: args.changeCommitment,
         sealed: args.changeNote,
         slot,
@@ -798,6 +806,7 @@ export const burnForTier = mutation({
     if (!Number.isInteger(amountTokens) || amountTokens <= 0) {
       throw new Error("Burn amount must be a positive integer.");
     }
+    assertNullifiers(nullifiers);
     for (const n of nullifiers) {
       const existing = await ctx.db
         .query("nullifiers")
@@ -868,6 +877,7 @@ export const redeem = mutation({
     if (!Number.isInteger(amountTokens) || amountTokens <= 0) {
       throw new Error("Redeem amount must be a positive integer.");
     }
+    assertNullifiers(nullifiers);
     for (const n of nullifiers) {
       const existing = await ctx.db
         .query("nullifiers")
@@ -1182,7 +1192,7 @@ export const shieldAsset = mutation({
       `shield:${wallet.address}:${Date.now()}:${Math.floor(Math.random() * 0xffffff)}`,
     );
     await ctx.db.patch(position._id, { units: position.units - units });
-    await ctx.db.insert("notes", {
+    await appendNote(ctx, {
       commitment,
       sealed: sealedNote,
       slot,
@@ -1238,6 +1248,7 @@ export const unshieldAsset = mutation({
     if (!Number.isInteger(units) || units <= 0) {
       throw new Error("Units must be a positive integer.");
     }
+    assertNullifiers(nullifiers);
     for (const n of nullifiers) {
       const existing = await ctx.db
         .query("nullifiers")

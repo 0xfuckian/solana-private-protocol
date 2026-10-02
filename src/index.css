@@ -3,19 +3,12 @@
 @import "tw-animate-css";
 @custom-variant dark (&:is(.dark *));
 
-/*
- * "Glitch" — the display face (Roman Polishchuk; "Glitch Demo" build is
- * what FontSpace ships). Self-hosted: drop the TTF into public/fonts/ as
- * either Glitch.ttf or "Glitch Demo.ttf" — all candidate paths are listed
- * below and the first one that exists wins. Until then headings fall back
- * to Space Grotesk.
+/* Uploaded display font, served directly from public/Glitch.ttf.
+ * Commercial use requires the font designer's appropriate license.
  */
 @font-face {
   font-family: "Glitch";
-  src: url("/fonts/Glitch.woff2") format("woff2"),
-    url("/fonts/Glitch.ttf") format("truetype"),
-    url("/fonts/Glitch%20Demo.woff2") format("woff2"),
-    url("/fonts/Glitch%20Demo.ttf") format("truetype");
+  src: url("/Glitch.ttf") format("truetype");
   font-weight: 400 700;
   font-display: swap;
 }
