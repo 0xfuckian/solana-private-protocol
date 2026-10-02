@@ -241,24 +241,26 @@ export const setWhitelistOpen = mutation({
 });
 
 /**
- * Founder bootstrap: the first account ever created can claim the admin role,
- * which unlocks the review console. Safe by construction — the founder signs
- * up first on a fresh deployment.
+ * Founder bootstrap: on a deployment with no admin yet, the first account to
+ * claim becomes the admin, which unlocks the reset/review console. Once an
+ * admin exists, claiming is closed — the existing admin can still call it
+ * idempotently. This does not depend on being the oldest user account, so it
+ * stays reachable even if earlier test accounts exist or were removed.
  */
 export const claimFounder = mutation({
   args: {},
   handler: async (ctx) => {
     const userId = await requireUserId(ctx);
     const user = await ctx.db.get(userId);
-    if (user?.role === "admin") return { claimed: true };
-    const first = await ctx.db
+    if (user?.role === "admin") return { claimed: true as const, reason: "already_admin" as const };
+
+    const existingAdmin = await ctx.db
       .query("users")
-      .withIndex("by_creation_time")
+      .filter(q => q.eq(q.field("role"), "admin"))
       .first();
-    if (first && first._id === userId) {
-      await ctx.db.patch(userId, { role: "admin" });
-      return { claimed: true };
-    }
-    return { claimed: false };
+    if (existingAdmin) return { claimed: false as const, reason: "admin_exists" as const };
+
+    await ctx.db.patch(userId, { role: "admin" });
+    return { claimed: true as const, reason: "claimed" as const };
   },
 });

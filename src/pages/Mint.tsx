@@ -7,6 +7,7 @@ import {
   Stat,
 } from "@/components/site/Stat";
 import { PageShell, SiteLayout } from "@/components/site/Layout";
+import { SimulationControls } from "@/components/site/SimulationControls";
 import { RequireAuth } from "@/components/RequireAuth";
 import { api } from "@/convex/_generated/api";
 import {
@@ -1132,6 +1133,7 @@ function MintPageInner() {
         </p>
       </div>
       {body}
+      <SimulationControls />
     </PageShell>
   );
 }
