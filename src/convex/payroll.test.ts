@@ -5,9 +5,9 @@ import schema from "./schema";
 import { api } from "./_generated/api";
 import { payrollBatchDomain } from "../lib/payroll";
 import { spendStatement } from "../lib/spend";
-import { sha256Hex } from "./sha256";
+import { recordTestProof } from "./testProof";
 const modules = import.meta.glob("./**/*.ts");
-const h = (n: number) => n.toString(16).padStart(64, "0");
+const h = (n: number) => n.toString();
 const sealed = { ephemeral: "A".repeat(22) + "==", nonce: "A".repeat(16), ciphertext: "A".repeat(683) + "=" };
 async function fixture() {
   const t = convexTest(schema, modules);
@@ -18,7 +18,7 @@ async function fixture() {
   const outputs = [{ payee: "C".repeat(44), amount: 1000, commitment: h(10), sealed }, { payee: "D".repeat(44), amount: 1000, commitment: h(11), sealed }];
   const spend = { nullifiers: [h(1)], inputTotal: 10_000, change: { value: 7980, commitment: h(2), sealed } };
   const statement = spendStatement(payrollBatchDomain(address, outputs), spend);
-  const proof = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
+  const proof = await t.run(ctx => recordTestProof(ctx, statement));
   return { t, identity, args: { ...spend, outputs, proof } };
 }
 describe("atomic simulation payroll", () => {
@@ -27,7 +27,7 @@ describe("atomic simulation payroll", () => {
     const receipt = await f.identity.mutation(api.payroll.dispatch, f.args);
     expect(receipt.totalTokens).toBe(2000); expect(receipt.feeTokens).toBe(20);
     const notes = await f.t.run(ctx => ctx.db.query("notes").collect());
-    expect(notes.filter(n => n.sealed.ephemeral !== "faucet")).toHaveLength(3);
+    expect(notes).toHaveLength(3);
     const state = await f.t.run(ctx => ctx.db.query("protocolState").first());
     expect(state!.treasuryTokens).toBe(10); expect(state!.vaultFeeTokens).toBe(10); expect(state!.treasuryLamports).toBe(0);
     await expect(f.identity.mutation(api.payroll.dispatch, f.args)).rejects.toThrow("double spend");

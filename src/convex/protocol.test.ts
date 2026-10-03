@@ -6,7 +6,7 @@ import { api } from "./_generated/api";
 import { appendNote, hashPair, TREE_DEPTH, FIELD } from "./merkle";
 
 const modules = import.meta.glob("./**/*.ts");
-const commitment = (n: number) => n.toString(16).padStart(64, "0");
+const commitment = (n: number) => n.toString();
 const sealed = { ephemeral: "test", nonce: "test", ciphertext: "test" };
 
 describe("persistent Merkle scaffold", () => {
@@ -15,7 +15,8 @@ describe("persistent Merkle scaffold", () => {
     for (let n = 1; n <= 4; n++) await t.run(ctx => appendNote(ctx, { commitment: commitment(n), sealed, slot: n, createdAt: n }));
     const path = await t.query(api.merkle.getPath, { commitment: commitment(2) });
     expect(path.siblings).toHaveLength(TREE_DEPTH);
-    let hash = (BigInt(`0x${commitment(2)}`) % FIELD).toString();
+    void FIELD;
+    let hash = commitment(2);
     for (let i = 0; i < TREE_DEPTH; i++) hash = path.pathIndices[i] ? hashPair(path.siblings[i], hash) : hashPair(hash, path.siblings[i]);
     expect(hash).toBe(path.root);
     expect(path.leafIndex).toBe(1);
@@ -34,15 +35,10 @@ describe("persistent Merkle scaffold", () => {
     await expect(t.run(ctx => appendNote(ctx, note))).rejects.toThrow("already exists");
     expect(await t.run(ctx => ctx.db.query("notes").collect())).toHaveLength(1);
   });
-  it("does not silently index legacy notes", async () => {
+  it("does not silently index unindexed notes", async () => {
     const t = convexTest(schema, modules);
     await t.run(ctx => ctx.db.insert("notes", { commitment: commitment(1), sealed, slot: 1, createdAt: 1 }));
-    await expect(t.query(api.merkle.getPath, { commitment: commitment(1) })).rejects.toThrow("migration");
-  });
-  it("keeps faucet receipts outside the spendable tree", async () => {
-    const t = convexTest(schema, modules);
-    await t.run(ctx => appendNote(ctx, { commitment: commitment(1), sealed: { ...sealed, ephemeral: "faucet" }, slot: 1, createdAt: 1 }));
-    expect(await t.run(ctx => ctx.db.query("merkleState").first())).toBeNull();
+    await expect(t.query(api.merkle.getPath, { commitment: commitment(1) })).rejects.toThrow("not indexed");
   });
 });
 
@@ -76,7 +72,7 @@ describe("transfer validation boundaries", () => {
   });
   it("rejects malformed tree commitments atomically", async () => {
     const t = convexTest(schema, modules);
-    await expect(t.run(ctx => appendNote(ctx, { commitment: "bad", sealed, slot: 1, createdAt: 1 }))).rejects.toThrow("Malformed commitment");
+    await expect(t.run(ctx => appendNote(ctx, { commitment: "bad", sealed, slot: 1, createdAt: 1 }))).rejects.toThrow("decimal field element");
     expect(await t.run(ctx => ctx.db.query("notes").collect())).toHaveLength(0);
   });
 });
@@ -89,7 +85,7 @@ describe("operational safety", () => {
     await identity.mutation(api.protocol.registerWallet, { address: "B".repeat(44), commitment: commitment(500), fundingLamports: 1000 });
     await identity.mutation(api.operations.setPaused, { paused: true });
     expect((await t.query(api.operations.getStatus, {})).paused).toBe(true);
-    await expect(identity.mutation(api.protocol.faucet, { lamports: 100 })).rejects.toThrow("emergency pause");
+    await expect(identity.mutation(api.protocol.openInvoice, { lots: 1, tier: "open", commitment: "1", noteR: "x" })).rejects.toThrow("emergency pause");
     await identity.mutation(api.operations.setPaused, { paused: false });
     expect((await t.query(api.operations.getStatus, {})).paused).toBe(false);
   });

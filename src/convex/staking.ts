@@ -1,12 +1,11 @@
 import { v } from "convex/values";
 import { query, mutation, type MutationCtx } from "./_generated/server";
 import { ensureProtocolState, getWalletForUser, getWalletForUserOrThrow, requireUserId } from "./backendHelpers";
-import { consumeSpend, spendArgs } from "./spend";
+import { consumeSpend, requireVerifiedProof, spendArgs } from "./spend";
 import { appendNote } from "./merkle";
 import { assertUnits, assertSealedNote } from "../lib/safety";
 import { pendingRewards, wholeRewards, REWARD_SCALE } from "../lib/rewards";
 import { sealedStatement } from "../lib/spend";
-import { sha256Hex } from "./sha256";
 
 const LOCK_MS = 7 * 24 * 60 * 60 * 1000;
 const outputArgs = { commitment: v.string(), sealedNote: v.object({ ephemeral: v.string(), nonce: v.string(), ciphertext: v.string(), epk: v.optional(v.string()) }), proof: v.string() };
@@ -64,7 +63,7 @@ export const unstake = mutation({
     if (!position || position.amount < amountTokens) throw new Error("Not enough staked tokens.");
     if (Date.now() < position.lockedUntil) throw new Error("Stake is locked for seven days after your most recent deposit.");
     const statement = `unstake:${wallet.address}:${amountTokens}:${commitment}:${sealedStatement(sealedNote)}`;
-    if (proof !== sha256Hex(sha256Hex(statement) + "solzk-circuit-v1")) throw new Error("Unstake statement mismatch.");
+    await requireVerifiedProof(ctx, statement, proof);
     await ctx.db.patch(position._id, { amount: position.amount - amountTokens, rewardCheckpoint: pool.rewardIndex,
       pendingRewardScaled: pendingRewards({ ...position, shares: position.amount }, BigInt(pool.rewardIndex)).toString() });
     await ctx.db.patch(pool._id, { totalStaked: pool.totalStaked - amountTokens });
@@ -88,7 +87,7 @@ export const claimRewards = mutation({
     if (tokens !== expectedTokens) throw new Error("Reward quote changed. Refresh and reseal.");
     if (tokens > pool.rewardTokens) throw new Error("Rewards are not funded.");
     const statement = `staking-reward:${wallet.address}:${tokens}:${commitment}:${sealedStatement(sealedNote)}`;
-    if (proof !== sha256Hex(sha256Hex(statement) + "solzk-circuit-v1")) throw new Error("Reward statement mismatch.");
+    await requireVerifiedProof(ctx, statement, proof);
     await ctx.db.patch(position._id, { rewardCheckpoint: pool.rewardIndex, pendingRewardScaled: (pending - BigInt(tokens) * REWARD_SCALE).toString() });
     await ctx.db.patch(pool._id, { rewardTokens: pool.rewardTokens - tokens, rewardsPaid: pool.rewardsPaid + tokens });
     await appendNote(ctx, { commitment, sealed: sealedNote, slot: Math.floor((Date.now() - state.genesisMs) / 400), createdAt: Date.now() });

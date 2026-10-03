@@ -54,8 +54,6 @@ import { useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { Link } from "react-router";
 
-const FAUCET_LAMPORTS = 10_000_000_000; // 10 SOL on first registration
-
 type Step = "wallet" | "form" | "invoice" | "done";
 
 function useNow(intervalMs = 1000) {
@@ -362,10 +360,8 @@ function RegisterCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
   const register = async () => {
     setBusy(true);
     try {
-      await slk.registerOnChain(FAUCET_LAMPORTS);
-      toast.success(
-        "Wallet registered on the ledger. 10 SOL deposited.",
-      );
+      await slk.registerOnChain();
+      toast.success("Wallet registered on the ledger.");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Registration failed";
       if (msg.includes(`already holds a ${TICKER} wallet`)) {
@@ -392,7 +388,7 @@ function RegisterCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           {registered
             ? "Unlock it above to mint. One account binds one wallet — neither can be multiplied."
-            : "Publishes your shielded address to the ledger and deposits 10 SOL so you can mint immediately."}
+            : "Publishes your shielded address to the ledger. Fund it with a real deposit before minting."}
         </p>
         {!registered && (
           <Button
@@ -405,7 +401,7 @@ function RegisterCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {
             ) : (
               <Droplets className="mr-2 size-4" />
             )}
-            Register & claim 10 SOL
+            Register wallet
           </Button>
         )}
       </CardContent>
@@ -696,21 +692,9 @@ function MintForm({
                     {lamportsToSol(wallet.fundingLamports)}
                   </span>
                 </p>
-                <button
-                  className="mt-1 inline-flex items-center gap-1 text-primary hover:underline"
-                  onClick={async () => {
-                    try {
-                      await slk.topUpFaucet(10_000_000_000);
-                      toast.success("10 SOL added.");
-                    } catch (e) {
-                      toast.error(
-                        e instanceof Error ? e.message : "Faucet failed",
-                      );
-                    }
-                  }}
-                >
-                  <Droplets className="size-3" /> Top up with the faucet
-                </button>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Funded by real deposits only — there is no faucet.
+                </p>
               </div>
             </div>
           </div>

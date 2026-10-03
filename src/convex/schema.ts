@@ -97,7 +97,6 @@ const schema = defineSchema(
       // seal ECDH notes to this wallet. Absent for legacy wallets.
       viewPubKey: v.optional(v.string()),
       fundingLamports: v.number(),
-      faucetTotalLamports: v.number(),
       lotsMinted: v.number(),
       // Cumulative tokens this wallet has burned for its fee-discount tier.
       burnedTokens: v.optional(v.number()),
@@ -166,6 +165,18 @@ const schema = defineSchema(
       value: v.string(),
       slot: v.number(),
     }).index("by_value", ["value"]),
+
+    // Real-proof receipts. A node action verifies a Groth16 proof against the
+    // reviewed verification key and records it here; mutations may then apply
+    // the authorized spend exactly once. A mutation can never verify a proof
+    // itself (the V8 runtime has no prover), and it will not accept a fabricated
+    // string — so no spend is authorized without a verified proof.
+    verifiedProofs: defineTable({
+      statement: v.string(),
+      proofHash: v.string(),
+      circuitId: v.string(),
+      createdAt: v.number(),
+    }).index("by_statement", ["statement"]),
 
     // Signed limit orders — intents, not deposits.
     orders: defineTable({

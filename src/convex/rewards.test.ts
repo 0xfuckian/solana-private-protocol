@@ -4,14 +4,13 @@ import { describe, expect, it } from "vitest";
 import schema from "./schema";
 import { api } from "./_generated/api";
 import { routeFee, routeTokenFee, ensureVaultPool } from "./backendHelpers";
-import { sha256Hex } from "./sha256";
+import { recordTestProof } from "./testProof";
 import { sealedStatement, spendStatement } from "../lib/spend";
 import { REWARD_SCALE } from "../lib/rewards";
 
 const modules = import.meta.glob("./**/*.ts");
 const sealed = { ephemeral: "A".repeat(22) + "==", nonce: "A".repeat(16), ciphertext: "A".repeat(683) + "=" };
-const h = (n: number) => n.toString(16).padStart(64, "0");
-const proof = (s: string) => sha256Hex(sha256Hex(s) + "solzk-circuit-v1");
+const h = (n: number) => n.toString();
 
 async function fixture() {
   const t = convexTest(schema, modules);
@@ -22,14 +21,19 @@ async function fixture() {
   return { t, identity, address, walletId };
 }
 
-async function deposit(f: Awaited<ReturnType<typeof fixture>>, amountTokens: number, n: number, staking = false) {
+type Fixture = Awaited<ReturnType<typeof fixture>>;
+const withProof = (f: Fixture, statement: string) => f.t.run(ctx => recordTestProof(ctx, statement));
+
+async function deposit(f: Fixture, amountTokens: number, n: number, staking = false) {
   const inputs = { nullifiers: [h(n)], inputTotal: amountTokens };
-  const args = { ...inputs, amountTokens, proof: proof(spendStatement(`${staking ? "stake" : "deposit"}:${f.address}:${amountTokens}`, inputs)) };
+  const domain = `${staking ? "stake" : "deposit"}:${f.address}:${amountTokens}`;
+  const proof = await withProof(f, spendStatement(domain, inputs));
+  const args = { ...inputs, amountTokens, proof };
   if (staking) await f.identity.mutation(api.staking.stake, args);
   else await f.identity.mutation(api.vault.deposit, args);
 }
 
-async function fees(f: Awaited<ReturnType<typeof fixture>>, amount: number, tokens = false) {
+async function fees(f: Fixture, amount: number, tokens = false) {
   await f.t.run(async ctx => {
     const state = (await ctx.db.query("protocolState").first())!;
     if (tokens) await routeTokenFee(ctx, state, amount);
@@ -52,7 +56,8 @@ describe("fixed-point vault accounting", () => {
     await deposit(f, 10, 1);
     await fees(f, 20);
     const statement = `withdraw:${f.address}:10:10:${h(30)}:${sealedStatement(sealed)}`;
-    const result = await f.identity.mutation(api.vault.withdraw, { shares: 10, expectedTokensOut: 10, commitment: h(30), sealedNote: sealed, proof: proof(statement) });
+    const proof = await withProof(f, statement);
+    const result = await f.identity.mutation(api.vault.withdraw, { shares: 10, expectedTokensOut: 10, commitment: h(30), sealedNote: sealed, proof });
     expect(result.claimedLamports).toBe(10);
     expect((await f.t.run(ctx => ctx.db.get(f.walletId)))?.fundingLamports).toBe(1010);
     expect((await f.identity.query(api.vault.getMyPosition, {}))?.shares).toBe(0);
@@ -94,8 +99,9 @@ describe("simulation staking", () => {
     expect((await f.identity.query(api.staking.getStatus, {})).claimableTokens).toBe(0);
     await fees(f, 100, true);
     expect((await f.identity.query(api.staking.getStatus, {})).claimableTokens).toBe(50);
-    await f.identity.mutation(api.staking.claimRewards, { expectedTokens: 50, commitment: h(30), sealedNote: sealed,
-      proof: proof(`staking-reward:${f.address}:50:${h(30)}:${sealedStatement(sealed)}`) });
+    const rewardStatement = `staking-reward:${f.address}:50:${h(30)}:${sealedStatement(sealed)}`;
+    const proof = await withProof(f, rewardStatement);
+    await f.identity.mutation(api.staking.claimRewards, { expectedTokens: 50, commitment: h(30), sealedNote: sealed, proof });
     const pool = await f.t.run(ctx => ctx.db.query("stakingPool").first());
     expect(pool!.rewardTokens).toBe(0); expect(pool!.rewardsPaid).toBe(50);
     await expect(f.identity.mutation(api.staking.claimRewards, { expectedTokens: 50, commitment: h(31), sealedNote: sealed, proof: "bad" })).rejects.toThrow("quote changed");
@@ -103,8 +109,9 @@ describe("simulation staking", () => {
   it("returns principal after expiry and preserves pending rewards", async () => {
     const f = await fixture(); await deposit(f, 1000, 1, true); await fees(f, 100, true);
     await f.t.run(async ctx => { const position = (await ctx.db.query("stakingPositions").first())!; await ctx.db.patch(position._id, { lockedUntil: 0 }); });
-    await f.identity.mutation(api.staking.unstake, { amountTokens: 1000, commitment: h(30), sealedNote: sealed,
-      proof: proof(`unstake:${f.address}:1000:${h(30)}:${sealedStatement(sealed)}`) });
+    const unstakeStatement = `unstake:${f.address}:1000:${h(30)}:${sealedStatement(sealed)}`;
+    const proof = await withProof(f, unstakeStatement);
+    await f.identity.mutation(api.staking.unstake, { amountTokens: 1000, commitment: h(30), sealedNote: sealed, proof });
     const status = await f.identity.query(api.staking.getStatus, {});
     expect(status.amount).toBe(0); expect(status.claimableTokens).toBe(50); expect(status.feeBps).toBe(200);
   });

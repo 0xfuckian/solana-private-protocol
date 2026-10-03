@@ -1,5 +1,5 @@
 import { sealedStatement } from "../lib/spend";
-import { consumeSpend, spendArgs } from "./spend";
+import { consumeSpend, requireVerifiedProof, spendArgs } from "./spend";
 import { appendNote } from "./merkle";
 import { assertNullifiers, assertUnits, assertSealedNote, relayerFeeTokens as dynamicRelayerFee } from "../lib/safety";
 import { getAuthUserId } from "@convex-dev/auth/server";
@@ -17,6 +17,7 @@ import {
 } from "./backendHelpers";
 import { isWalletWhitelisted } from "./whitelist";
 import { sha256Hex } from "./sha256";
+import { commitmentFor } from "../lib/poseidon";
 import {
   APPROVED_MAX_LOTS,
   APPROVED_RATE_LAMPORTS,
@@ -218,7 +219,6 @@ export const getMyWallet = query({
       _id: wallet._id,
       address: wallet.address,
       fundingLamports: wallet.fundingLamports,
-      faucetTotalLamports: wallet.faucetTotalLamports,
       lotsMinted: wallet.lotsMinted,
       approved,
       mintedTokens: wallet.lotsMinted * state.lotSize,
@@ -280,46 +280,17 @@ export const registerWallet = mutation({
       address,
       viewPubKey,
       fundingLamports,
-      faucetTotalLamports: fundingLamports,
       lotsMinted: 0,
       createdAt: Date.now(),
     });
-    // Sealed registration note — also the devnet faucet receipt.
-    await appendNote(ctx, {
-      commitment,
-      sealed: {
-        ephemeral: "faucet",
-        nonce: "faucet",
-        ciphertext: hexHashOf(`solzk-faucet:${address}:${fundingLamports}`),
-      },
-      slot: nowSlot(state.genesisMs),
-      createdAt: Date.now(),
-    });
+    void commitment;
     return id;
   },
 });
 
-/**
- * Devnet faucet: tops up the wallet's ordinary (unshielded) SOL so the mint
- * flow can be exercised end-to-end without a real chain.
- */
-export const faucet = mutation({
-  args: { lamports: v.number() },
-  handler: async (ctx, { lamports }) => {
-    assertUnits(lamports);
-    await ensureProtocolState(ctx);
-    const userId = await requireUserId(ctx);
-    const wallet = await getWalletForUserOrThrow(ctx, userId);
-    if (lamports <= 0 || lamports > 50_000_000_000) {
-      throw new Error("Faucet amount out of range");
-    }
-    await ctx.db.patch(wallet._id, {
-      fundingLamports: wallet.fundingLamports + lamports,
-      faucetTotalLamports: wallet.faucetTotalLamports + lamports,
-    });
-    return wallet.fundingLamports + lamports;
-  },
-});
+// There is no faucet. A wallet's unshielded SOL only ever comes from a real
+// deposit (mint payment, trade fill, redeem, swap, or fee payout). Nothing in
+// this backend can conjure a balance.
 
 /**
  * Open a mint invoice. Reserves a one-time deposit address.
@@ -398,7 +369,7 @@ export const payInvoice = mutation({
       throw new Error("Invoice expired — open a new one.");
     }
     if (wallet.fundingLamports < invoice.lamports + RELAYER_FEE_LAMPORTS) {
-      throw new Error("Insufficient SOL — use the faucet to top up.");
+      throw new Error("Insufficient SOL — deposit to the wallet before minting.");
     }
     await ctx.db.patch(invoiceId, {
       status: "seen",
@@ -447,11 +418,8 @@ export const settleInvoice = mutation({
       return { status: "seen", confirmations, minted: false };
     }
 
-    // Verify the proof commits to the payload (relayer-side verification).
-    const expected = sha256Hex(sha256Hex(payload) + "solzk-circuit-v1");
-    if (expected !== proof) {
-      throw new Error("Proof rejected: it does not commit to these bytes.");
-    }
+    // The relayer only publishes an envelope whose proof the node verified.
+    await requireVerifiedProof(ctx, payload, proof);
 
     // Uniform size: the envelope is exactly 934 bytes — the sealed note
     // followed by zero padding. Size never leaks the amount.
@@ -467,9 +435,7 @@ export const settleInvoice = mutation({
     if (sealed.ciphertext.length !== CIPHERTEXT_B64_LEN) {
       throw new Error("Sealed note ciphertext must be 512 bytes.");
     }
-    const expectedCommitment = sha256Hex(
-      `solzk-note:${invoice.lots * LOT_SIZE}:${invoice.noteR}:${wallet.address}`,
-    );
+    const expectedCommitment = commitmentFor(invoice.lots * LOT_SIZE, invoice.noteR, wallet.address);
     if (expectedCommitment !== invoice.commitment) {
       throw new Error(
         "Commitment mismatch — envelope does not bind the invoice.",
@@ -599,10 +565,7 @@ export const sendPrivate = mutation({
     // Verify the proof commits to the payload parts — including the new
     // commitments, so a published note cannot be swapped after the fact.
     const statement = `${args.nullifiers.join(",")}|${args.receiver}|${args.amount}|${args.receiverCommitment}|${sealedStatement(args.sealedNote)}|${args.changeCommitment}|${sealedStatement(args.changeNote)}|${args.feeInNote === true}`;
-    const expected = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
-    if (expected !== args.proof) {
-      throw new Error("Proof rejected: it does not commit to these bytes.");
-    }
+    await requireVerifiedProof(ctx, statement, args.proof);
 
     const staking = await ctx.db.query("stakingPositions").withIndex("by_wallet", q => q.eq("walletId", wallet._id)).unique();
     const staked = (staking?.amount ?? 0) > 0;
@@ -913,47 +876,9 @@ export const redeem = mutation({
   },
 });
 
-// ---------------------------------------------------------------------------
-// Private swap pool bootstrap + claims pool seed (devnet simulation hooks)
-// ---------------------------------------------------------------------------
-
-/**
- * Devnet simulation control: size the claims pool to a fixed fraction of
- * lifetime routed fees — the same relationship the protocol spec proposes
- * (a slice of every fee funds the fee-share claims pool on mainnet).
- */
-export const seedClaimsPool = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const state = await ensureProtocolState(ctx);
-    if ((state.claimsPoolTokens ?? 0) > 0) return { seeded: false };
-    // 0.1% of effective supply: 210,000 SOLZK at genesis.
-    const tokens = Math.floor(state.totalSupply * 0.001);
-    await ctx.db.patch(state._id, { claimsPoolTokens: tokens });
-    return { seeded: true, tokens };
-  },
-});
-
-/**
- * Devnet simulation control: seed the private swap AMM reserves. On
- * mainnet the pool is seeded from protocol liquidity; here it is a
- * one-click fixture. See convex/swap.ts for the swap logic itself.
- */
-export const seedSwapPool = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const state = await ensureProtocolState(ctx);
-    if ((state.swapSolReserve ?? 0) > 0 && (state.swapTokenReserve ?? 0) > 0) {
-      return { seeded: false };
-    }
-    // 35 SOL ↔ 10,000,000 SOLZK → 350 lamports/token, the open mint rate.
-    await ctx.db.patch(state._id, {
-      swapSolReserve: 3_500_000_000,
-      swapTokenReserve: 10_000_000,
-    });
-    return { seeded: true };
-  },
-});
+// The swap reserves and the claims pool are no longer seeded by hand. Both
+// are funded by real protocol activity: mint liquidity fills the swap reserve
+// and a slice of routed fees funds the claims pool.
 
 // ---------------------------------------------------------------------------
 // ZK fee-share claims — prove you held value at a past anchor, claim from
@@ -1037,10 +962,7 @@ export const claimFeeShare = mutation({
       throw new Error("This claim was already made — nullifier seen.");
     }
     const statement = `feeshare:${anchorSlot}:${anchorRoot}:${holderCommitment}:${tokens}`;
-    const expected = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
-    if (expected !== proof) {
-      throw new Error("Proof rejected: it does not commit to these bytes.");
-    }
+    await requireVerifiedProof(ctx, statement, proof);
     // The witness must be a real note in the pool at (or before) the anchor.
     const note = await ctx.db
       .query("notes")
@@ -1155,10 +1077,7 @@ export const shieldAsset = mutation({
       throw new Error("Sealed note ciphertext must be 512 bytes.");
     }
     const statement = `shield:${wallet.address}:${symbol}:${units}:${commitment}`;
-    const expected = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
-    if (expected !== proof) {
-      throw new Error("Proof rejected: it does not commit to these bytes.");
-    }
+    await requireVerifiedProof(ctx, statement, proof);
 
     const slot = Math.floor((Date.now() - state.genesisMs) / 400);
     const signature = hexHashOf(
@@ -1278,33 +1197,8 @@ export const listAssetEvents = query({
   },
 });
 
-/** Devnet mock SPL faucet. */
-export const assetFaucet = mutation({
-  args: { symbol: v.string() },
-  handler: async (ctx, { symbol }) => {
-    const userId = await requireUserId(ctx);
-    const wallet = await getWalletForUserOrThrow(ctx, userId);
-    const asset = assetBySymbol(symbol);
-    if (!asset) throw new Error("Unknown asset symbol.");
-    const position = await ctx.db
-      .query("assetWallets")
-      .withIndex("by_wallet", (q) => q.eq("walletId", wallet._id))
-      .filter((q) => q.eq(q.field("symbol"), symbol))
-      .first();
-    if (position) {
-      await ctx.db.patch(position._id, {
-        units: position.units + asset.faucetGrantUnits,
-      });
-    } else {
-      await ctx.db.insert("assetWallets", {
-        walletId: wallet._id,
-        symbol,
-        units: asset.faucetGrantUnits,
-        createdAt: Date.now(),
-      });
-    }
-    return { symbol, units: (position?.units ?? 0) + asset.faucetGrantUnits };  },
-});
+// The mock SPL faucet is gone. Transparent asset balances only ever come from
+// a real deposit; without one they start at zero.
 export const listMyInvoices = query({
   args: {},
   handler: async (ctx) => {

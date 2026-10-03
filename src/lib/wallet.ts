@@ -16,6 +16,9 @@
  */
 
 import { pseudoBase58 } from "./protocol";
+import { commitmentFor as commitmentFieldFor, nullifierFor as nullifierFieldFor } from "./poseidon";
+
+export { TREE_DEPTH, fieldFromString, spendKeyField, commitmentField, EMPTY_ROOT } from "./poseidon";
 
 // ---------------------------------------------------------------------------
 // Wordlist (256 common words, enough for a 24-word seed in this simulation)
@@ -252,19 +255,19 @@ export async function decryptSeed(
 // Notes: commitments, nullifiers, transfer encryption
 // ---------------------------------------------------------------------------
 
-export async function commitmentFor(
+/** Poseidon commitment (decimal field string) — matches circuits/kilnen-spend.circom. */
+export function commitmentFor(
   value: number,
   nonce: string,
-  spendKeyHex: string,
-): Promise<string> {
-  return sha256Hex(`solzk-note:${value}:${nonce}:${spendKeyHex}`);
+  owner: string,
+  assetId = 0,
+): string {
+  return commitmentFieldFor(value, nonce, owner, assetId);
 }
 
-export async function nullifierFor(
-  commitment: string,
-  spendKeyHex: string,
-): Promise<string> {
-  return sha256Hex(`solzk-nullifier:${commitment}:${spendKeyHex}`);
+/** Poseidon nullifier (decimal field string) — matches the circuit. */
+export function nullifierFor(commitment: string, spendKeyHex: string): string {
+  return nullifierFieldFor(commitment, spendKeyHex);
 }
 
 /**

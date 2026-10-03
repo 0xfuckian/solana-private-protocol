@@ -332,7 +332,6 @@ function LiquidityPanel() {
 
 function ClaimsCard() {
   const slk = useSolzk();
-  const seed = useMutation(api.protocol.seedClaimsPool);
   const [busy, setBusy] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<{ slot: number; root: string } | null>(
     null,
@@ -364,34 +363,10 @@ function ClaimsCard() {
         </p>
 
         {claimsPoolTokens === 0 ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-3"
-            disabled={busy !== null}
-            onClick={async () => {
-              setBusy("seed");
-              try {
-                const r = await seed({});
-                toast.success(
-                  r.seeded
-                    ? `Claims pool funded with ${formatTokenAmount(r.tokens ?? 0)} ${TICKER}.`
-                    : "Claims pool already funded.",
-                );
-              } catch (e) {
-                toast.error(e instanceof Error ? e.message : "Seed failed");
-              } finally {
-                setBusy(null);
-              }
-            }}
-          >
-            {busy === "seed" ? (
-              <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-            ) : (
-              <Scale className="mr-1.5 size-3.5" />
-            )}
-            Fund the claims pool
-          </Button>
+          <p className="mt-3 rounded-lg border border-border/60 bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
+            The claims pool is funded by a slice of routed protocol fees. It
+            stays empty until real fees accrue.
+          </p>
         ) : (
           <div className="mt-3 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-background px-3 py-2 text-xs">
@@ -591,30 +566,9 @@ function AssetShieldCard() {
             Unshield
           </Button>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mt-2"
-          disabled={busy !== null}
-          onClick={async () => {
-            setBusy("faucet");
-            try {
-              await slk.assetFaucet(symbol);
-              toast.success(`${symbol} granted.`);
-            } catch (e) {
-              toast.error(e instanceof Error ? e.message : "Faucet failed");
-            } finally {
-              setBusy(null);
-            }
-          }}
-        >
-          {busy === "faucet" ? (
-            <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-          ) : (
-            <Droplets className="mr-1.5 size-3.5 text-primary" />
-          )}
-          Asset faucet
-        </Button>
+        <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
+          Transparent {symbol} balances come from real deposits only.
+        </p>
       </CardContent>
     </Card>
   );

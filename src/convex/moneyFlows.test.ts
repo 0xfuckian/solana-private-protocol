@@ -3,31 +3,32 @@ import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 import schema from "./schema";
 import { api } from "./_generated/api";
-import { sha256Hex } from "./sha256";
 import { spendStatement, sealedStatement, type SpendInputs } from "../lib/spend";
 import { consumeSpend } from "./spend";
+import { recordTestProof } from "./testProof";
 import { routeTokenFee } from "./backendHelpers";
 
 const modules = import.meta.glob("./**/*.ts");
 const sealed = { ephemeral: "A".repeat(22) + "==", nonce: "A".repeat(16), ciphertext: "A".repeat(683) + "=" };
-const hash = (n: number) => n.toString(16).padStart(64, "0");
-const proofFor = (statement: string) => sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
+const hash = (n: number) => n.toString();
 const spend: SpendInputs = { nullifiers: [hash(1)], inputTotal: 10_000, change: { value: 9000, commitment: hash(2), sealed } };
 
 describe("atomic change accounting (declared demo values)", () => {
   it("spends once and appends excess value as change", async () => {
     const t = convexTest(schema, modules);
-    await t.run(ctx => consumeSpend(ctx, spend, 1000, "test", proofFor(spendStatement("test", spend)), 1));
+    const proof = await t.run(ctx => recordTestProof(ctx, spendStatement("test", spend)));
+    await t.run(ctx => consumeSpend(ctx, spend, 1000, "test", proof, 1));
     const notes = await t.run(ctx => ctx.db.query("notes").collect());
     expect(notes).toHaveLength(1);
     expect(notes[0].commitment).toBe(hash(2));
     expect(await t.run(ctx => ctx.db.query("nullifiers").collect())).toHaveLength(1);
-    await expect(t.run(ctx => consumeSpend(ctx, spend, 1000, "test", proofFor(spendStatement("test", spend)), 2))).rejects.toThrow("double spend");
+    await expect(t.run(ctx => consumeSpend(ctx, spend, 1000, "test", proof, 2))).rejects.toThrow("double spend");
   });
-  it("rejects tampered change without retiring inputs", async () => {
+  it("rejects a spend whose statement has no verified proof", async () => {
     const t = convexTest(schema, modules);
     const tampered = { ...spend, change: { ...spend.change!, commitment: hash(3) } };
-    await expect(t.run(ctx => consumeSpend(ctx, tampered, 1000, "test", proofFor(spendStatement("test", spend)), 1))).rejects.toThrow("mismatch");
+    const proof = await t.run(ctx => recordTestProof(ctx, spendStatement("test", spend)));
+    await expect(t.run(ctx => consumeSpend(ctx, tampered, 1000, "test", proof, 1))).rejects.toThrow("no verified Groth16 proof");
     expect(await t.run(ctx => ctx.db.query("nullifiers").collect())).toHaveLength(0);
   });
   it("rejects missing excess change", async () => {
@@ -37,7 +38,8 @@ describe("atomic change accounting (declared demo values)", () => {
   it("rolls back spent inputs if change commitment is already published", async () => {
     const t = convexTest(schema, modules);
     await t.run(ctx => ctx.db.insert("notes", { commitment: hash(2), sealed, slot: 1, createdAt: 1 }));
-    await expect(t.run(ctx => consumeSpend(ctx, spend, 1000, "test", proofFor(spendStatement("test", spend)), 2))).rejects.toThrow("already exists");
+    const proof = await t.run(ctx => recordTestProof(ctx, spendStatement("test", spend)));
+    await expect(t.run(ctx => consumeSpend(ctx, spend, 1000, "test", proof, 2))).rejects.toThrow("already exists");
     expect(await t.run(ctx => ctx.db.query("nullifiers").collect())).toHaveLength(0);
   });
 });
@@ -60,7 +62,8 @@ describe("market settlement", () => {
     const f = await marketFixture();
     const output = hash(200);
     const domain = `trade:${f.fill.tradeId}:${output}:${sealedStatement(sealed)}`;
-    await f.seller.mutation(api.market.settleTrade, { tradeId: f.fill.tradeId, commitment: output, sealedNote: sealed, ...spend, proof: proofFor(spendStatement(domain, spend)) });
+    const proof = await f.t.run(ctx => recordTestProof(ctx, spendStatement(domain, spend)));
+    await f.seller.mutation(api.market.settleTrade, { tradeId: f.fill.tradeId, commitment: output, sealedNote: sealed, ...spend, proof });
     const records = await f.t.run(async ctx => ({ seller: await ctx.db.get(f.sellerWallet), buyer: await ctx.db.get(f.buyerWallet), state: await ctx.db.query("protocolState").first(), pool: await ctx.db.query("vaultPool").first(), order: await ctx.db.get(f.orderId), nullifiers: await ctx.db.query("nullifiers").collect() }));
     expect(records.seller!.fundingLamports).toBe(10_000);
     expect(records.buyer!.fundingLamports).toBe(989_800);

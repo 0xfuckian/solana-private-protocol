@@ -708,7 +708,6 @@ function DashboardInner() {
     api.protocol.listMyInvoices,
     slk.serverWallet ? {} : "skip",
   );
-  const topUp = useMutation(api.protocol.faucet);
 
   if (slk.phase !== "unlocked") {
     return <UnlockGate slk={slk} />;
@@ -744,21 +743,7 @@ function DashboardInner() {
         <Stat
           label="SOL balance"
           value={`${lamportsToSol(wallet.fundingLamports)} SOL`}
-          sub={
-            <button
-              className="inline-flex items-center gap-1 text-primary hover:underline"
-              onClick={async () => {
-                try {
-                  await topUp({ lamports: 10_000_000_000 });
-                  toast.success("10 SOL added.");
-                } catch (e) {
-                  toast.error(e instanceof Error ? e.message : "Faucet failed");
-                }
-              }}
-            >
-              <Droplets className="size-3" /> Top up
-            </button>
-          }
+          sub="funded by real deposits"
         />
         <Stat
           label="Lots minted"

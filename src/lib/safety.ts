@@ -6,7 +6,8 @@ export function assertUnits(value: number, label = "Amount", allowZero = false):
 
 export function assertNullifiers(values: string[]): void {
   if (values.length === 0 || values.length > 16) throw new Error("Select between 1 and 16 input notes.");
-  if (values.some((value) => !/^[a-f0-9]{64}$/.test(value))) throw new Error("Malformed nullifier.");
+  // Nullifiers are Poseidon field elements (decimal strings), not hex digests.
+  if (values.some((value) => !/^\d+$/.test(value))) throw new Error("Malformed nullifier.");
   if (new Set(values).size !== values.length) throw new Error("Duplicate nullifier in transaction.");
 }
 
@@ -46,6 +47,7 @@ export function relayerFeeTokens(amount: number): number {
 }
 
 export function isSolzkNote(note: { memo: string }): boolean {
-  // Legacy simulation classification only. Production asset IDs must be in the commitment/circuit.
+  // Native KLN notes carry no asset: prefix. Shielded SPL notes do; their
+  // asset id is a public input to the spend circuit.
   return !note.memo.startsWith("asset:");
 }

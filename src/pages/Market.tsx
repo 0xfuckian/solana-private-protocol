@@ -280,7 +280,6 @@ function OrderTicket() {
 
 function SwapCard() {
   const slk = useSolzk();
-  const seed = useMutation(api.protocol.seedSwapPool);
   const [direction, setDirection] = useState<"sol_to_tokens" | "tokens_to_sol">(
     "sol_to_tokens",
   );
@@ -314,30 +313,10 @@ function SwapCard() {
             SOL and back without an order book, without unshielding. The
             pool reserves need seeding once.
           </p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-4"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                const r = await seed({});
-                toast.success(
-                  r.seeded
-                    ? "Swap reserves seeded at the open mint rate."
-                    : "Reserves already seeded.",
-                );
-              } catch (e) {
-                toast.error(e instanceof Error ? e.message : "Seed failed");
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            {busy ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Shuffle className="mr-1.5 size-3.5" />}
-            Seed reserves
-          </Button>
+          <p className="mt-4 rounded-lg border border-border/60 bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
+            The pool is not funded yet. Reserves come from real protocol
+            liquidity only — they fill as the mint routes its 95% liquidity in.
+          </p>
         </CardContent>
       </Card>
     );

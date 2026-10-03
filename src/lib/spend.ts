@@ -25,7 +25,7 @@ export function validateSpend(spend: SpendInputs, amount: number): void {
   } else {
     if (!spend.change || spend.change.value !== remainder) throw new Error("Change must equal declared inputs minus spend.");
     assertUnits(spend.change.value, "Change");
-    if (!/^[a-f0-9]{64}$/.test(spend.change.commitment)) throw new Error("Malformed change commitment.");
+    if (!/^\d+$/.test(spend.change.commitment)) throw new Error("Malformed change commitment.");
     assertSealedNote(spend.change.sealed);
   }
 }

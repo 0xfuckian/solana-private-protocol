@@ -19,10 +19,8 @@ import {
   SLOT_SECONDS,
   TICKER,
   TOTAL_SUPPLY,
-  addressFromHex,
   discountTierForBurned,
   formatTokenAmount,
-  hashFromHex,
   quoteSwapSolForTokens,
   quoteSwapTokensForSol,
   transferFeeTokens,
@@ -63,7 +61,6 @@ import {
 const CHAIN_START_KEY = "solzk.chainStart.v1";
 const SLOT_START_MS = Date.parse("2026-10-01T00:00:00Z");
 const SLOT_MS = 400;
-const FAUCET_SIG_KEY = "solzk.faucetSig.v1";
 
 export function getChainStart(): number {
   if (typeof window === "undefined") return SLOT_START_MS;
@@ -81,32 +78,6 @@ export function currentSlot(): number {
 
 export function slotToTimestamp(slot: number): number {
   return getChainStart() + slot * SLOT_MS;
-}
-
-export function makeSignature(): string {
-  return hashFromHex(
-    addressFromHex(
-      Array.from({ length: 32 }, () =>
-        Math.floor(Math.random() * 16).toString(16),
-      ).join(""),
-    ),
-  );
-}
-
-export function recordFaucetSignature(sig: string) {
-  try {
-    localStorage.setItem(FAUCET_SIG_KEY, sig);
-  } catch {
-    /* storage unavailable */
-  }
-}
-
-export function readFaucetSignature(): string {
-  try {
-    return localStorage.getItem(FAUCET_SIG_KEY) ?? "";
-  } catch {
-    return "";
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -165,17 +136,13 @@ export function useSolzk() {
   const staking = useQuery(api.staking.getStatus, authUser ? {} : "skip");
 
   const registerWalletMut = useMutation(api.protocol.registerWallet);
-  const faucetMut = useMutation(api.protocol.faucet);
   const sendPrivateMut = useMutation(api.protocol.sendPrivate);
   const burnForTierMut = useMutation(api.protocol.burnForTier);
   const redeemMut = useMutation(api.protocol.redeem);
   const claimFeeShareMut = useMutation(api.protocol.claimFeeShare);
   const checkpointAnchorMut = useMutation(api.protocol.checkpointAnchor);
-  const seedClaimsPoolMut = useMutation(api.protocol.seedClaimsPool);
-  const seedSwapPoolMut = useMutation(api.protocol.seedSwapPool);
   const shieldAssetMut = useMutation(api.protocol.shieldAsset);
   const unshieldAssetMut = useMutation(api.protocol.unshieldAsset);
-  const assetFaucetMut = useMutation(api.protocol.assetFaucet);
   const swapSolForTokensMut = useMutation(api.swap.swapSolForTokens);
   const swapTokensForSolMut = useMutation(api.swap.swapTokensForSol);
   const depositMut = useMutation(api.vault.deposit);
@@ -415,31 +382,21 @@ export function useSolzk() {
 
   const refreshNotes = useCallback(() => setScanBump((b) => b + 1), []);
 
-  /** Register the derived address with the node and seed the devnet faucet. */
+  /** Register the derived address with the node. `depositLamports` is a real
+   * deposit credited to the unshielded balance (0 on a fresh wallet). */
   const registerOnChain = useCallback(
-    async (faucetLamports: number) => {
+    async (depositLamports = 0) => {
       if (!address || !spendKeyRef.current) throw new Error("Wallet locked");
       const id = await registerWalletMut({
         address,
-        commitment: await commitmentFor(0, "registration", spendKeyRef.current),
-        fundingLamports: faucetLamports,
+        commitment: commitmentFor(0, "registration", address),
+        fundingLamports: depositLamports,
         viewPubKey: viewPubKeyRef.current ?? undefined,
       });
       setLinkedWalletId(address);
-      const sig = makeSignature();
-      recordFaucetSignature(sig);
-      return { walletId: id as string, faucetSignature: sig };
+      return { walletId: id as string };
     },
     [address, registerWalletMut],
-  );
-
-  const topUpFaucet = useCallback(
-    async (lamports: number) => {
-      const next = await faucetMut({ lamports });
-      recordFaucetSignature(makeSignature());
-      return next;
-    },
-    [faucetMut],
   );
 
   /**
@@ -741,18 +698,6 @@ export function useSolzk() {
     [address, vaultPool, withdrawMut, refreshNotes, sealToSelf],
   );
 
-  /** Devnet simulation hooks: size the claims pool, seed the swap AMM. */
-  const seedClaimsPool = useCallback(async () => {
-    const r = await seedClaimsPoolMut({});
-    refreshNotes();
-    return r as { seeded: boolean; tokens?: number };
-  }, [seedClaimsPoolMut, refreshNotes]);
-
-  const seedSwapPool = useCallback(async () => {
-    const r = await seedSwapPoolMut({});
-    return r as { seeded: boolean };
-  }, [seedSwapPoolMut]);
-
   /** Advance the public fee anchor (anyone can checkpoint). */
   const checkpointAnchor = useCallback(async () => {
     return (await checkpointAnchorMut({})) as { slot: number; root: string };
@@ -817,14 +762,6 @@ export function useSolzk() {
       refreshNotes();
     },
     [address, buildSpend, unshieldAssetMut, refreshNotes],
-  );
-
-  /** Devnet mock SPL faucet. */
-  const assetFaucet = useCallback(
-    async (symbol: string) => {
-      await assetFaucetMut({ symbol });
-    },
-    [assetFaucetMut],
   );
 
   /** Quote a private swap SOL → SOLZK against current reserves. */
@@ -944,7 +881,6 @@ export function useSolzk() {
     lock,
     forgetWallet,
     registerOnChain,
-    topUpFaucet,
     sendPrivate,
     burnForTier,
     redeemTokens,
@@ -960,15 +896,12 @@ export function useSolzk() {
     quoteSwapSol,
     quoteSwapTokens,
     swap,
-    seedSwapPool,
     // multi-asset shield
     shieldAsset,
     unshieldAsset,
-    assetFaucet,
     // zk fee-share claims
     checkpointAnchor,
     claimFeeShare,
-    seedClaimsPool,
     // shielded state
     balance,
     notes,

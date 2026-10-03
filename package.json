@@ -80,6 +80,8 @@
     "@types/react-dom": "^19.2.3",
     "@types/snarkjs": "^0.7.9",
     "@vitejs/plugin-react": "^5.1.1",
+    "circom2": "^0.2.23",
+    "circomlib": "^2.0.5",
     "convex-test": "0.0.41",
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
