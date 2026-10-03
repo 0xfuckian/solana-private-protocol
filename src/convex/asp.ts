@@ -10,7 +10,7 @@ import { ADDRESS_LEN } from "../lib/protocol";
  * labelled addresses; the join-split circuit takes an optional ASP root as
  * a public input, and labels propagate inside the shielded pool until an
  * exit forces a choice: taint the change or ragequit into the tainted
- * output. In this devnet build, the registry is the public label store:
+ * output. The registry is the public label store:
  * anyone may assert a label for any shielded address, senders resolve the
  * payee's label before paying (breaking the same-address heuristic), and
  * the label set for an address is what a compliance-aware sender sees.

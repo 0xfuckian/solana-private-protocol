@@ -87,7 +87,7 @@ describe("fixed-point vault accounting", () => {
   });
 });
 
-describe("simulation staking", () => {
+describe("staking pool", () => {
   it("locks principal, discounts fees and previews governance weight", async () => {
     const f = await fixture(); await deposit(f, 1000, 1, true);
     const status = await f.identity.query(api.staking.getStatus, {});

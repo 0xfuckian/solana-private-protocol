@@ -21,7 +21,7 @@ import { commitmentFor as commitmentFieldFor, nullifierFor as nullifierFieldFor 
 export { TREE_DEPTH, fieldFromString, spendKeyField, commitmentField, EMPTY_ROOT } from "./poseidon";
 
 // ---------------------------------------------------------------------------
-// Wordlist (256 common words, enough for a 24-word seed in this simulation)
+// Wordlist (256 common words, enough for a 24-word seed in this client)
 // ---------------------------------------------------------------------------
 
 const WORDLIST_STR =
@@ -516,7 +516,12 @@ function hexToBuf(hex: string): Uint8Array<ArrayBuffer> {
 }
 
 // ---------------------------------------------------------------------------
-// "Zero-knowledge" proof building (simulated circuit)
+// Statement proof building
+//
+// The ledger no longer accepts a hash as a "proof": shielded spends must be
+// real Groth16 proofs over the join-split circuit (src/lib/groth16.ts),
+// verified on the node by convex/groth16.ts. This helper exists only so the
+// remaining statement-only flows fail loudly instead of silently hashing.
 // ---------------------------------------------------------------------------
 
 /**
@@ -528,13 +533,10 @@ export async function buildProof(payload: string): Promise<{
   proof: string;
   proofBytes: number;
 }> {
-  const inner = await sha256Hex(payload);
-  const proof = await sha256Hex(inner + "solzk-circuit-v1");
-  return {
-    proof,
-    // Mimics a Groth16 proof size
-    proofBytes: 192,
-  };
+  void payload;
+  throw new Error(
+    "No proof builder for this statement. Shielded spends must produce a real Groth16 proof (src/lib/groth16.ts proveSpend); the node rejects hashes.",
+  );
 }
 
 /** Verify helper shared by the relayer action (recomputed there in node). */

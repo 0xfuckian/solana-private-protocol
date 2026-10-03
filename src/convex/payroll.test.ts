@@ -21,7 +21,7 @@ async function fixture() {
   const proof = await t.run(ctx => recordTestProof(ctx, statement));
   return { t, identity, args: { ...spend, outputs, proof } };
 }
-describe("atomic simulation payroll", () => {
+describe("atomic payroll dispatch", () => {
   it("creates recipient and change notes with a one percent conserved token fee", async () => {
     const f = await fixture();
     const receipt = await f.identity.mutation(api.payroll.dispatch, f.args);
@@ -38,7 +38,7 @@ describe("atomic simulation payroll", () => {
     await expect(f.identity.mutation(api.payroll.dispatch, f.args)).rejects.toThrow("already exists");
     expect(await f.t.run(ctx => ctx.db.query("nullifiers").collect())).toHaveLength(0);
     expect(await f.t.run(ctx => ctx.db.query("payrollBatches").collect())).toHaveLength(0);
-    expect(await f.t.run(ctx => ctx.db.query("notes").collect())).toHaveLength(2);
+    expect(await f.t.run(ctx => ctx.db.query("notes").collect())).toHaveLength(1);
   });
   it("rejects duplicate payees", async () => { const f = await fixture(); f.args.outputs[1].payee = f.args.outputs[0].payee; await expect(f.identity.mutation(api.payroll.dispatch, f.args)).rejects.toThrow("Duplicate"); });
   it("rejects a tampered payroll amount and change relationship", async () => { const f = await fixture(); f.args.outputs[0].amount = 2000; await expect(f.identity.mutation(api.payroll.dispatch, f.args)).rejects.toThrow("Change"); });

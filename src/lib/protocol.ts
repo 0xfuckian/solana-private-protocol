@@ -10,7 +10,7 @@
 
 import { assertUnits, mulDivFloor } from "./safety";
 
-/** Legacy simulation scale. Do not use for Solana RPC amounts. */
+/** Solana lamports per SOL. */
 export const SOLANA_LAMPORTS_PER_SOL = 1_000_000_000;
 
 export const SITE_NAME = "Kilnen";
@@ -54,7 +54,7 @@ export const RELAYER_FEE_LAMPORTS = 5_000; // flat network-fee reimbursement
 
 /** Slots an invoice payment must confirm for before settlement (≈13s total). */
 export const CONFIRMATIONS_REQUIRED = 3;
-/** Seconds between simulated slot advances used by the client ticker. */
+/** Seconds between slot advances used by the client ticker. */
 export const SLOT_SECONDS = 4;
 /** Invoice lifetime in seconds. */
 export const INVOICE_TTL_SECONDS = 60 * 60;
@@ -202,7 +202,7 @@ export const MAX_LOTS_PER_TX = MAX_MINT_PER_TX / LOT_SIZE; // 1,000
 
 /**
  * Flat relayer fee for fee-in-note transfers, paid in SOLZK out of the spent
- * value. With fee-in-note the sender needs no faucet SOL at all: the note
+ * value. With fee-in-note the sender needs no SOL at all: the note
  * itself pays the relayer, and the protocol covers the chain fee from the
  * vault — the mechanism that makes a wallet with zero SOL still spendable.
  */
@@ -411,13 +411,11 @@ export function quoteSwapTokensForSol(
 export interface ShieldedAsset {
   symbol: string;
   name: string;
-  /** Devnet mock mint address. */
+  /** Mainnet SPL mint address. */
   mint: string;
   decimals: number;
-  /** Mock devnet price: lamports per raw unit, for fee math and display. */
+  /** Reference price: lamports per raw unit, for fee math and display. */
   lamportsPerUnit: number;
-  /** Units the devnet faucet adds per top-up. */
-  faucetGrantUnits: number;
 }
 
 export const SHIELDED_ASSETS: ShieldedAsset[] = [
@@ -427,7 +425,6 @@ export const SHIELDED_ASSETS: ShieldedAsset[] = [
     mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     decimals: 6,
     lamportsPerUnit: 1,
-    faucetGrantUnits: 250_000_000,
   },
   {
     symbol: "BONK",
@@ -435,7 +432,6 @@ export const SHIELDED_ASSETS: ShieldedAsset[] = [
     mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
     decimals: 3,
     lamportsPerUnit: 1,
-    faucetGrantUnits: 5_000_000_000,
   },
   {
     symbol: "JUP",
@@ -443,7 +439,6 @@ export const SHIELDED_ASSETS: ShieldedAsset[] = [
     mint: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
     decimals: 6,
     lamportsPerUnit: 40,
-    faucetGrantUnits: 20_000_000,
   },
 ];
 
@@ -451,7 +446,7 @@ export function assetBySymbol(symbol: string): ShieldedAsset | null {
   return SHIELDED_ASSETS.find((a) => a.symbol === symbol) ?? null;
 }
 
-/** SOL-equivalent value of an asset amount (mock devnet pricing). */
+/** SOL-equivalent value of an asset amount (reference pricing). */
 export function assetLamportsValue(symbol: string, units: number): number {
   const asset = assetBySymbol(symbol);
   if (!asset) return 0;

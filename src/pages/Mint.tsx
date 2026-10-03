@@ -350,7 +350,7 @@ function WalletSetup({ slk }: { slk: ReturnType<typeof useSolzk> }) {
 }
 
 // ---------------------------------------------------------------------------
-// Registration + faucet
+// Registration
 // ---------------------------------------------------------------------------
 
 function RegisterCard({ slk }: { slk: ReturnType<typeof useSolzk> }) {

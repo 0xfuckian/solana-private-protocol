@@ -20,7 +20,8 @@ import {
  * construction and note sealing stay in the operator's browser: agents
  * must NEVER accept seeds, passwords, or viewing private keys over the
  * network, and this module exposes no mutation that takes one.
- * Everything here reads the public ledger; `simulation: true` always.
+ * Everything here reads the public ledger; `source` names where the numbers
+ * come from so agents can tell a live ledger from a fixture at a glance.
  */
 
 /** Pool snapshot for agents: roots, supply, fees, reserves, assets. */
@@ -34,7 +35,7 @@ export const poolState = query({
       .withIndex("by_key", (q) => q.eq("key", "global"))
       .unique();
     return {
-      simulation: true as const,
+      source: "convex-ledger" as const,
       ticker: TICKER,
       lotSize: LOT_SIZE,
       mintRateLamportsPerLot: OPEN_RATE_LAMPORTS,
@@ -84,7 +85,7 @@ export const agentReputation = query({
       .first();
     if (!wallet) {
       return {
-        simulation: true as const,
+        source: "convex-ledger" as const,
         address,
         known: false as const,
         payrollBatches: 0,
@@ -101,7 +102,7 @@ export const agentReputation = query({
     const claims = await ctx.db.query("feeClaims").collect();
     const mine = claims.filter((c) => c.walletId === wallet._id);
     return {
-      simulation: true as const,
+      source: "convex-ledger" as const,
       address,
       known: true as const,
       payrollBatches: batches.length,
@@ -140,7 +141,7 @@ export const aspCheck = query({
       label = row?.label ?? null;
     }
     return {
-      simulation: true as const,
+      source: "convex-ledger" as const,
       commitmentFound,
       label,
       selfAsserted: true as const,

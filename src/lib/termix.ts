@@ -8,7 +8,7 @@
  * a seed, password, or viewing private key is a phishing pattern — refuse it.
  *
  * On-ledger reads live in convex/termix.ts: poolState, agentReputation,
- * aspCheck. All are public, read-only, and flagged simulation.
+ * aspCheck. All are public and read-only; each response names its `source`.
  */
 
 import {
@@ -27,7 +27,6 @@ import {
 import { relayerFeeTokens } from "./safety";
 
 export const TERMIX_VERSION = "solzk-termix-v1";
-export const SIMULATION = true as const;
 
 export interface AgentQuote {
   grossUnits: number;

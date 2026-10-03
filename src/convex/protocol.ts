@@ -136,7 +136,7 @@ export function parseSealed(payload: string): SealedObj | null {
 }
 
 function nowSlot(genesisMs: number): number {
-  // Simulated chain: ~2.5 slots/sec like Solana.
+  // Slot clock: ~2.5 slots/sec like Solana.
   return Math.floor((Date.now() - genesisMs) / 400);
 }
 
@@ -569,13 +569,13 @@ export const sendPrivate = mutation({
 
     const staking = await ctx.db.query("stakingPositions").withIndex("by_wallet", q => q.eq("walletId", wallet._id)).unique();
     const staked = (staking?.amount ?? 0) > 0;
-    // Limits use the disclosed simulation exit-rate valuation, not a live SOL price.
+    // Limits use the disclosed exit-rate valuation, not a live SOL price.
     const day = Math.floor(Date.now() / 86_400_000);
     const usage = await ctx.db.query("transferUsage").withIndex("by_wallet_day", q => q.eq("walletId", wallet._id).eq("day", day)).unique();
     const transferValue = args.amount * REDEEM_LAMPORTS_PER_TOKEN;
     assertUnits(transferValue, "Transfer valuation");
     const dailyLimit = (staked ? 100 : 10) * LAMPORTS_PER_SOL;
-    if ((usage?.valueUnits ?? 0) + transferValue > dailyLimit) throw new Error(`Daily simulation transfer limit is ${staked ? 100 : 10} SOL-equivalent.`);
+    if ((usage?.valueUnits ?? 0) + transferValue > dailyLimit) throw new Error(`Daily transfer limit is ${staked ? 100 : 10} SOL-equivalent.`);
     if (usage) await ctx.db.patch(usage._id, { valueUnits: usage.valueUnits + transferValue });
     else await ctx.db.insert("transferUsage", { walletId: wallet._id, day, valueUnits: transferValue });
 
@@ -929,7 +929,7 @@ export const listBurns = query({
  * balance, and learns nothing beyond the claim size.
  *
  * Payout: pro-rata slice of the claims pool in SOL, funded by a slice of
- * protocol fees (see seedClaimsPool for the devnet sizing).
+ * protocol fees (a slice of every routed fee).
  */
 export const claimFeeShare = mutation({
   args: {
@@ -1043,10 +1043,10 @@ export const listMyFeeClaims = query({
 });
 
 /**
- * Multi-asset shield, devnet slice: wrap mock SPL assets into the sealed
- * note format. `assetMint` binds the note to an asset (in the full design
- * the note's asset_id is a public input to the join-split circuit). The
- * devnet faucet grants mock units; shield/unshield move them opaquely.
+ * Multi-asset shield: wrap SPL assets into the sealed note format. The
+ * note's asset_id is a public input to the join-split circuit, so a proof
+ * for one asset cannot be replayed as another. Transparent balances are
+ * funded by real deposits; shield/unshield move them opaquely.
  */
 export const shieldAsset = mutation({
   args: {
@@ -1071,7 +1071,7 @@ export const shieldAsset = mutation({
       .filter((q) => q.eq(q.field("symbol"), symbol))
       .first();
     if (!position || position.units < units) {
-      throw new Error(`Not enough transparent ${symbol} — use the asset faucet first.`);
+      throw new Error(`Not enough transparent ${symbol} — deposit it first.`);
     }
     if (sealedNote.ciphertext.length !== CIPHERTEXT_B64_LEN) {
       throw new Error("Sealed note ciphertext must be 512 bytes.");

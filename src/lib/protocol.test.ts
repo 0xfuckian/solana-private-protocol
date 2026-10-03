@@ -4,7 +4,7 @@ import { decodePayLink, encodePayLink, mintFeeSplit, quoteSwapSolForTokens, quot
 import { assertNullifiers, assertSealedNote, assertUnits, isSolzkNote, mulDivFloor, relayerFeeTokens } from "./safety";
 import { parsePayrollCsv, payrollSummary } from "./payroll";
 import { buildEnvelopePayload, buildProof, generateSeedWords, sealNoteFor, tryUnsealNote, validateSeedWords } from "./wallet";
-import { generateGroth16Proof } from "./groth16";
+import { proveSpend } from "./groth16";
 
 const address = "A".repeat(44);
 describe("integer money math", () => {
@@ -65,8 +65,8 @@ describe("notes and proofs", () => {
   });
   it("produces valid demo seeds with secure randomness", () => { const words = generateSeedWords(); expect(validateSeedWords(words).ok).toBe(true); });
   it("keeps legacy envelopes deterministic", () => { const note = { ephemeral: "a", nonce: "b", ciphertext: "c" }; expect(buildEnvelopePayload("mint", note, 934).length).toBe(1868); });
-  it("identifies legacy hashes as publicly recomputable", async () => expect(await buildProof("public")).toEqual(await buildProof("public")));
-  it("refuses Groth16 generation without artifacts", async () => await expect(generateGroth16Proof({})).rejects.toThrow("No simulated proof fallback"));
+  it("refuses to hash a statement into a proof", async () => await expect(buildProof("public")).rejects.toThrow("real Groth16 proof"));
+  it("refuses Groth16 generation without artifacts", async () => await expect(proveSpend({} as never, { circuitId: "", wasmUrl: "", zkeyUrl: "" })).rejects.toThrow("No simulated proof fallback"));
 });
 
 describe("versioned requests and payroll", () => {

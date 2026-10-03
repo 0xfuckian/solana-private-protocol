@@ -1,9 +1,8 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { consumeSpend, spendArgs } from "./spend";
+import { consumeSpend, requireVerifiedProof, spendArgs } from "./spend";
 import { appendNote } from "./merkle";
-import { sha256Hex } from "./sha256";
 import { sealedStatement } from "../lib/spend";
 import { assertUnits, assertSealedNote, mulDivFloor } from "../lib/safety";
 import { advanceRewardIndex, pendingRewards, readRewardIndex, REWARD_SCALE, wholeRewards } from "../lib/rewards";
@@ -103,7 +102,7 @@ export const withdraw = mutation({
     const tokensOut = mulDivFloor(shares, pool.depositedTokens, pool.totalShares);
     if (tokensOut !== expectedTokensOut) throw new Error("Withdrawal quote changed. Refresh and reseal the note.");
     const statement = `withdraw:${wallet.address}:${shares}:${tokensOut}:${commitment}:${sealedStatement(sealedNote)}`;
-    if (proof !== sha256Hex(sha256Hex(statement) + "solzk-circuit-v1")) throw new Error("Withdrawal statement mismatch.");
+    await requireVerifiedProof(ctx, statement, proof);
     const index = readRewardIndex(pool);
     const pending = pendingRewards(position, index);
     const claimedLamports = wholeRewards(pending);

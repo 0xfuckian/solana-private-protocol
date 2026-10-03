@@ -14,8 +14,8 @@
 | --- | --- |
 | Brand (name/ticker/colours) | ✅ Applied — `Kilnen` / `$KLN`, ember-on-obsidian theme |
 | Auth (email OTP) + one-wallet-per-account | ✅ Working in simulation |
-| Shielded notes, nullifiers, Merkle tree | ✅ Simulated; v2 ECDH encryption wired |
-| Groth16 proving | ⚠️ Scaffold only — no circuit artifacts; server verifier rejects |
+| Shielded notes, nullifiers, Merkle tree | ✅ Poseidon commitments/nullifiers matching the circuit; v2 ECDH encryption wired |
+| Groth16 proving | ✅ Real circuit (`circuits/kilnen-spend.circom`) + real client prover + real node verifier; ⚠️ artifacts need `circuits/setup.sh`, and the dev setup is single-party |
 | Solana settlement | ⚠️ Scaffold only — `isSettlementLive() === false` |
 | Privacy guarantee | ❌ Not real (v1 legacy notes are publicly decryptable) |
 | Custody / audits / governance / legal | ❌ None |
@@ -32,8 +32,8 @@
 ### Phase 1 — Protocol truth (weeks)
 1. Specify the join-split statement, key derivation, ciphertext binding and
    public-signal authorization binding; review before coding.
-2. Compile + constrain `circuits/solzk-joinsplit.circom`; run a multiparty
-   phase-2 ceremony; publish artifact hashes.
+2. Compile + constrain `circuits/kilnen-spend.circom` (done — real constraints);
+   run a multiparty phase-2 ceremony; publish artifact hashes.
 3. Build/test the Anchor custody + verifier program (permanent nullifier PDAs,
    finalized-state checks, emergency pause).
 4. Implement secure spend/view-separated encryption + stealth derivation and a
@@ -108,7 +108,17 @@
       self-service admin path
 - [ ] `operations:setPaused` is retained deliberately: it is the emergency
       pause switch in the rollback runbook (§5) and is covered by tests
-- [ ] Confirm no faucet / demo-funding hook remains reachable in `src/pages/Mint.tsx`
+- [x] Removed the devnet faucet and mock-asset faucet (`protocol:faucet`,
+      `protocol:assetFaucet`), the claims/swap seed hooks
+      (`seedClaimsPool`, `seedSwapPool`, `swap:seedReserves`), the faucet-signature
+      machinery and the `faucetTotalLamports` wallet field — nothing conjures a balance
+- [x] Replaced the forgeable SHA-256 "proof" with a real Groth16 gate: the V8
+      mutations consume a one-time receipt written only by `convex/groth16.ts`
+      after it verifies a proof; the client prover is `src/lib/groth16.ts`
+- [ ] Run `circuits/setup.sh` to produce wasm/zkey/vkey, serve the artifacts from
+      `public/circuits/`, and set `KILNEN_CIRCUIT_VKEY` on the deployment
+- [ ] Complete a multi-party Powers-of-Tau + phase-2 ceremony (the dev setup in
+      `setup.sh` is single-party and not trust-minimized)
 
 ### Legal & comms
 - [ ] Legal review complete (token/custody/privacy)

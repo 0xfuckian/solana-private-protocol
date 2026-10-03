@@ -6,10 +6,10 @@ import { api } from "./_generated/api";
 const modules = import.meta.glob("./**/*.ts");
 
 describe("agent integration reads", () => {
-  it("poolState reports the open mint price, fees and simulation flag", async () => {
+  it("poolState reports the open mint price, fees and data source", async () => {
     const t = convexTest(schema, modules);
     const s = await t.query(api.termix.poolState, {});
-    expect(s.simulation).toBe(true);
+    expect(s.source).toBe("convex-ledger");
     expect(s.mintRateLamportsPerLot).toBe(3_500_000);
     expect(s.walletCapLots).toBe(1_000);
     expect(s.feesBps).toEqual({ mint: 500, transfer: 200, swap: 30 });

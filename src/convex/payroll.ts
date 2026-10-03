@@ -19,7 +19,7 @@ export const dispatch = mutation({
       assertUnits(output.amount);
       assertSealedNote(output.sealed);
       if (!/^[1-9A-HJ-NP-Za-km-z]{44}$/.test(output.payee)) throw new Error("Invalid payee address.");
-      if (!/^[a-f0-9]{64}$/.test(output.commitment)) throw new Error("Malformed output commitment.");
+      if (!/^\d+$/.test(output.commitment)) throw new Error("Malformed output commitment.");
       if (payees.has(output.payee) || commitments.has(output.commitment)) throw new Error("Duplicate payee or commitment.");
       payees.add(output.payee); commitments.add(output.commitment);
     }
@@ -30,7 +30,7 @@ export const dispatch = mutation({
     const valuation = debit * REDEEM_LAMPORTS_PER_TOKEN;
     assertUnits(valuation, "Payroll valuation");
     const usage = await ctx.db.query("transferUsage").withIndex("by_wallet_day", q => q.eq("walletId", wallet._id).eq("day", day)).unique();
-    if ((usage?.valueUnits ?? 0) + valuation > limit) throw new Error("Payroll exceeds your remaining daily simulation transfer allowance.");
+    if ((usage?.valueUnits ?? 0) + valuation > limit) throw new Error("Payroll exceeds your remaining daily transfer allowance.");
     const slot = Math.floor((Date.now() - state.genesisMs) / 400);
     await consumeSpend(ctx, args, debit, payrollBatchDomain(wallet.address, args.outputs), args.proof, slot);
     for (const output of args.outputs) await appendNote(ctx, { commitment: output.commitment, sealed: output.sealed, slot, createdAt: Date.now() });

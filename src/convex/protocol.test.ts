@@ -48,7 +48,7 @@ describe("transfer validation boundaries", () => {
     const user = await t.run(ctx => ctx.db.insert("users", {}));
     const identity = t.withIdentity({ subject: user });
     await identity.mutation(api.protocol.registerWallet, { address: "B".repeat(44), commitment: commitment(600), fundingLamports: 1_000_000 });
-    const args = { nullifiers: ["a".repeat(64)], receiver: "C".repeat(44), amount: 1000, receiverCommitment: commitment(700), sealedNote: { ephemeral: "A".repeat(22) + "==", nonce: "A".repeat(16), ciphertext: "A".repeat(683) + "=" }, changeNote: { ephemeral: "none", nonce: "none", ciphertext: "none" }, changeCommitment: "", proof: "invalid" };
+    const args = { nullifiers: ["123456789"], receiver: "C".repeat(44), amount: 1000, receiverCommitment: commitment(700), sealedNote: { ephemeral: "A".repeat(22) + "==", nonce: "A".repeat(16), ciphertext: "A".repeat(683) + "=" }, changeNote: { ephemeral: "none", nonce: "none", ciphertext: "none" }, changeCommitment: "", proof: "invalid" };
     return { t, identity, args };
   }
   it.each([0, -1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])("rejects unsafe transfer value %s without spending", async amount => {

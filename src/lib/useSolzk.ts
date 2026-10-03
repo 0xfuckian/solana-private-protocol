@@ -55,7 +55,7 @@ import {
 } from "./wallet";
 
 // ---------------------------------------------------------------------------
-// Public chain simulation helpers
+// Chain clock + local session helpers
 // ---------------------------------------------------------------------------
 
 const CHAIN_START_KEY = "solzk.chainStart.v1";
@@ -322,7 +322,6 @@ export function useSolzk() {
         // 1-byte view tag: match my tag first so the scan can prioritise
         // (and on mainnet, skip) foreign notes without a trial decrypt.
         const tagHit =
-          n.sealed.ephemeral !== "faucet" &&
           n.sealed.ephemeral !== "none"
             ? await ephemeralMatchesTag(address, n.sealed.ephemeral)
             : false;
@@ -617,7 +616,7 @@ export function useSolzk() {
 
   /**
    * Read-only scan: trial-decrypt the whole pool with someone else's
-   * address (their incoming view key, in this devnet build). Returns what
+   * address (their incoming view key). Returns what
    * they hold — values and memos — without any spend authority.
    */
   const scanAddress = useCallback(

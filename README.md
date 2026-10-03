@@ -1,28 +1,29 @@
 # Kilnen research workspace
 
-React + Vite + Convex simulation of a Solana privacy protocol. Brand: **Kilnen** (token `$KLN`), ember-on-obsidian theme. **Not production, not audited, not private encryption, and not real Solana settlement. Do not use real funds or sensitive information.**
+React + Vite + Convex app for a Solana privacy protocol, with a **real Groth16 join-split circuit** and a real client prover + node verifier that fail closed. Brand: **Kilnen** (token `$KLN`), ember-on-obsidian theme. **Not production, not audited, single-party circuit setup, and not real Solana settlement. Do not use real funds or sensitive information.**
 
 See [the pre-launch plan & checklist](docs/LAUNCH.md) and [the security review & pen-test report](docs/AUDIT.md).
 
 ## Implemented in this foundation pass
 - Uploaded `public/Glitch.ttf` self-hosted for display typography. Confirm commercial font licensing before launch.
-- Depth-26 persistent Poseidon Merkle scaffold for newly inserted notes, indexed current paths and last-100-root retention. Existing notes require migration; legacy commitments are SHA-256 mapped into Fr, not native circuit commitments.
+- Depth-20 persistent Poseidon Merkle tree with native field commitments matching the circuit, indexed current paths and last-100-root retention. Existing legacy notes require migration.
 - snarkjs Groth16 client adapter requiring explicit WASM, zkey and verification key. No join-split circuit artifacts included. Production verifier endpoint deliberately rejects; demo hash endpoints remain insecure.
 - Integer checks, duplicate-input rejection, dynamic fee-in-note quote, KLN-only client spend selection, UTF-8-correct ciphertext padding, conservative bigint AMM quote math, ownership boundaries.
 - Change-preserving demo spends for burns, redemptions, deposits, token swaps and asset unshielding; versioned statements bind declared totals, inputs and change. Actual input values and ownership are still not proven.
 - Market settlement retires seller nullifiers, returns change, releases gross SOL to the seller and routes the buyer-paid fee once. Filled orders leave the book; pending fills do not set the last settled price.
 - Separate KLN treasury/reward balances; new token fees no longer credit SOL pools. Historical misclassified fees require reviewed migration.
 - Bigint-string vault reward indices/checkpoints preserve fractional entitlement across deposits, claims and withdrawals. Legacy precision cannot be recovered. Claims no longer manufacture backfill fees.
-- Dashboard simulation staking: seven-day locks, funded pro-rata KLN rewards, 1% base transfer fee before burn discounts, 100 vs 10 demo-SOL daily transfer allowance and governance-weight preview. No on-chain staking contract or actual DAO voting.
-- Admin pause/resume controls with audit events, blocking operations that use the protocol state helper. Not an audited on-chain or multisig pause. `SOLZK_EXECUTION_MODE=production` blocks the simulation state helper; it does not enable production.
-- `/payroll`: local CSV/request-link preparation plus atomic simulation dispatch for up to 20 payees, recipient notes, excess change and a 1% token fee. Exported links remain unfunded requests, not employee bearer claims. Dispatch uploads payees/amounts and is not private payroll.
+- Dashboard staking: seven-day locks, funded pro-rata KLN rewards, 1% base transfer fee before burn discounts, 100 vs 10 SOL-equivalent daily transfer allowance and governance-weight preview. No on-chain staking contract or actual DAO voting.
+- Admin pause/resume controls with audit events, blocking operations that use the protocol state helper. Not an audited on-chain or multisig pause. `SOLZK_EXECUTION_MODE=production` blocks the ledger state helper; it does not enable production.
+- `/payroll`: local CSV/request-link preparation plus atomic dispatch for up to 20 payees, recipient notes, excess change and a 1% token fee. Exported links remain unfunded requests, not employee bearer claims. Dispatch uploads payees/amounts and is not private payroll.
 - `/explorer`: indexed 100-row paginated envelope receipts, kind/date filters on loaded pages, decoded public mint and fee summaries. Other event feeds remain limited; asset/tier-wide indexed filtering is outstanding.
 - `/docs`: public handbook, threat model, corrected economics, known defects and mainnet acceptance gates, available during the whitelist gate.
 - Reference-informed pages (Helius / Privacy Cash / Jupiter patterns): single open mint rate, status timeline, policy, live checklist and FAQ; mint step tracker, fee schedule, privacy notes and FAQ; protocol fee table, safety/audit-status table and renumbered spec nav. Whitelist/allowlist gate removed; open mint only.
 - v2 note encryption (ECDH P-256 + HKDF + AES-GCM-256, per-note epk) wired into wallet create/restore/unlock, registration (`viewPubKey`), self-seals (change/vault/swap/shield), recipient seals when the ledger publishes a key, and pool scanning. Backend validators accept optional `epk`; spend statements bind it. Pay shows v2 vs legacy per recipient. Legacy v1 notes stay publicly readable; restores rotate keys.
-- Production scaffolds (unaudited, not deployed): `circuits/solzk-joinsplit.circom` + `vectors.json` placeholders + ceremony README, `solana/solzk_verifier.json` Anchor IDL scaffold, `src/lib/solana.ts` settlement gate (`isSettlementLive() === false`).
+- ZK: `circuits/kilnen-spend.circom` (real, unaudited) + `circuits/setup.sh` + deterministic `circuits/vectors.json`; browser prover `src/lib/groth16.ts`; node verifier `src/convex/groth16.ts`; shared field layer `src/lib/poseidon.ts`. No faucet, no seed hooks, no hash "proofs".
+- Remaining scaffolds (unaudited, not deployed): `solana/solzk_verifier.json` Anchor IDL scaffold, `src/lib/solana.ts` settlement gate (`isSettlementLive() === false`).
 - Agent integration (TermiX): read-only Convex queries (`termix.poolState`, `agentReputation`, `aspCheck`) and a pure client SDK (`src/lib/termix.ts` — pay-link codecs, net quotes, `workProofHash`). See [docs/TERMIX.md](docs/TERMIX.md).
-- Testing reset: admin-only `operations.resetSimulation` wipes mint counts, supply, notes, nullifiers, invoices/orders, vault/staking positions and the Merkle tree back to zero (optionally clearing wallets too). Exposed as a testing console on `/explorer`; simulation-only, never a production control.
+- No faucet, no seed hooks, no simulation reset: all of that scaffolding has been removed.
 
 ## Key custody & server contract
 Keys never leave the user's device. Wallet seeds and the v2 viewing key are generated in the browser, shown/entered once, and stored locally only as PBKDF2 + AES-GCM ciphertext in `localStorage`; nothing is uploaded, cloudy-backed-up, or synced across devices. `registerWallet` receives only the derived address, a public commitment, and the public viewing key. The server's only crypto role is verifying a proof the client already made — `POST /api/transfer/verify` takes `proof` + `publicInputs` and never a key. There is no server-side proof generation, and no endpoint accepts a seed, spend key, viewing private key, or password. Refuse any integration that asks for one; that is a phishing pattern.

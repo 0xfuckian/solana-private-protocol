@@ -3,7 +3,7 @@
  *
  * Legacy v1 notes derive their AES-GCM key as SHA-256("solzk-view:" +
  * address + ":" + ephemeral): anyone holding the (public) address can
- * decrypt every note. That is a research-simulation shortcut, not
+ * decrypt every note. That is a research shortcut, not
  * encryption, and it stays readable forever for old notes.
  *
  * v2 notes use per-note ephemeral ECDH (P-256) + HKDF-SHA-256 + AES-GCM-256:

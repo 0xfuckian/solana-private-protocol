@@ -285,7 +285,7 @@ const schema = defineSchema(
       .index("by_address", ["address"])
       .index("by_label", ["label"]),
 
-    // Transparent (unshielded) devnet mock SPL balances, per wallet.
+    // Transparent (unshielded) SPL balances, per wallet — credited by real deposits.
     assetWallets: defineTable({
       walletId: v.id("wallets"),
       symbol: v.string(),

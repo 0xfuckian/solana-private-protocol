@@ -5,8 +5,9 @@
 manifest, build/dependency surface.
 **Method:** static review, auth/authz trace, secret-flow tracing, input-boundary
 review, dependency audit (`bun audit`), and the existing unit/integration suite.
-**Posture:** the target is a **simulation**. Findings below that concern real
-privacy or custody are *design blockers*, not bugs to patch in a sprint.
+**Posture:** the join-split circuit and the node verifier are now real; what
+remains a *design blocker* is the trusted-setup ceremony, the on-chain
+verifier program, and custody — not the cryptography's shape.
 
 ---
 
@@ -17,10 +18,12 @@ unauthenticated mutation were found. All Convex mutations require an
 authenticated user and every admin action is role-gated. Keys are generated
 in-browser and never transmitted (verify-only server contract).
 
-The dominant risk is **not** code hygiene — it is that the cryptography is a
-simulation. Proofs are forgeable, legacy v1 notes are publicly decryptable, and
-the Groth16 verifier is a scaffold that rejects. Until the audited circuit and
-Anchor program exist, no real value may touch this system.
+The dominant risk is **not** code hygiene — it is the trust edges that remain:
+a single-party development setup (toxic waste), an unaudited circuit, legacy v1
+notes that are publicly decryptable, and no on-chain verifier program. The
+client prover and node verifier are real and fail closed, so no value moves
+without a proof that verifies; but until the ceremony is multi-party and the
+Anchor program exists, no real value may touch this system.
 
 | Severity | Count | Blocking mainnet? |
 | --- | --- | --- |
@@ -33,14 +36,18 @@ Anchor program exist, no real value may touch this system.
 
 ### CRITICAL
 
-**F-01 — Forgeable spend authorization (client-declared proofs)**
-Evidence: `src/lib/wallet.ts` `buildProof` (SHA-256 of a statement string);
-verifiers in `src/convex/protocol.ts`, `market.ts`, `swap.ts`, `vault.ts`,
-`staking.ts`, `payroll.ts` recompute the same hash. The spend key never signs
-anything and input totals are client-declared.
-Impact: anyone can forge ownership/value/conservation; the simulated endpoints
-are unsafe for real funds.
-Status: **Open (by design).** Fix = implemented + audited join-split circuit.
+**F-01 — Spend authorization (was: client-declared proof hashes)**
+Evidence (fixed): the SHA-256 placeholder in `src/lib/wallet.ts` `buildProof` is
+gone; `src/convex/spend.ts` `requireVerifiedProof` now demands a receipt written
+only by the node verifier. `src/convex/groth16.ts` (`verifySpend`) verifies a
+real Groth16 proof against the circuit verification key before recording it, and
+`src/lib/groth16.ts` produces it with `snarkjs`. `circuits/kilnen-spend.circom`
+enforces ownership, conservation, asset-ID, nullifier and Merkle membership.
+Impact (remaining): the circuit is unaudited and its setup is single-party, so
+the verifying key is not yet trust-minimized; and semantic binding of the
+public signals to live ledger state is deferred to the on-chain verifier.
+Status: **Substantially fixed. Open:** circuit audit + multi-party ceremony +
+Anchor verifier program.
 
 **F-02 — Legacy v1 note encryption is publicly decryptable**
 Evidence: `src/lib/wallet.ts` v1 note key derived from public address +
@@ -50,22 +57,24 @@ forever. AES-GCM integrity does not restore confidentiality.
 Status: **Mitigated for new notes** (v2 ECDH P-256 + HKDF + AES-GCM-256 when a
 viewing key is published). **Open for legacy v1** — needs a reviewed migration.
 
-**F-03 — No real authorization binding in the server verifier**
-Evidence: `src/convex/groth16.ts` always rejects; `src/lib/groth16.ts` requires
-externally supplied wasm/zkey/vkey that are not shipped.
-Impact: no server-side proof of ownership, conservation, asset-ID or
-nullifier derivation exists yet.
-Status: **Open (scaffold).**
+**F-03 — Server-side proof binding**
+Evidence (fixed): `src/convex/groth16.ts` now performs real `snarkjs.groth16.verify`
+and records a one-time receipt consumed by the mutations.
+Impact (remaining): full semantic binding (that the proven signals are the
+ledger's current root, unspent nullifiers and the requested outputs) requires the
+on-chain verifier program; the node action verifies the cryptographic statement.
+Status: **Partly fixed. Open:** Anchor verifier + signal-binding rules.
 
 ### HIGH
 
 **F-04 — Admin bootstrap race (`claimFounder`)**
 Evidence: `src/convex/whitelist.ts` grants `role: "admin"` to the first account
 created on the deployment.
-Impact: on a fresh deployment anyone who signs up first becomes admin and can
-pause, reset, or review. Acceptable in dev, unsafe for launch.
-Status: **Open.** Recommend restricting to a configured founder identity
-(e.g. matching email from deployment env) and claiming it before launch.
+Impact: on a fresh deployment anyone who signed up first became admin and could
+pause, reset, or review.
+Status: **Fixed.** `claimFounder` and `ALLOW_FOUNDER_BOOTSTRAP` are deleted in
+`src/convex/whitelist.ts`; the first admin must now be assigned out-of-band in
+the Convex dashboard.
 
 **F-05 — No rate limiting / abuse controls**
 Evidence: public mutations (`registerWallet`, `openInvoice`, pay-link/payroll
@@ -131,8 +140,7 @@ seed/password/key).
 ## Controls verified good
 
 - Every Convex mutation calls `requireUserId`; admin ops check `role`.
-- `resetSimulation`, `setPaused`, `reviewApplication`, `setWhitelistOpen` are
-  admin-only.
+- `setPaused`, `reviewApplication`, `setWhitelistOpen` are admin-only.
 - Keys never leave the device; server contract is verify-only (`docs/TERMIX.md`).
 - No `eval`, `new Function`, `child_process`, `document.write`, or user HTML
   injection in app code.
@@ -143,8 +151,10 @@ seed/password/key).
 
 - **Brand rebrand** (Kilnen/$KLN + ember theme) applied without touching any
   hash domain, storage key, or wire format.
-- **Testing reset** added (`operations.resetSimulation`) — admin-only, so
-  state can be zeroed for tests without a redeploy; self-gated.
+- **Test scaffolding removed** — `operations.resetSimulation`,
+  `operations.founderDiagnostics`, `protocol.simulateSellout`, the devnet
+  faucet/mock-asset faucet and the seed hooks are all deleted, so no
+  client-callable path can conjure balances or admin.
 - **Key-custody documentation** made explicit across `docs/`.
 
 ## Method & limitations

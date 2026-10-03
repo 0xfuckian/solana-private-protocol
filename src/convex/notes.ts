@@ -26,7 +26,6 @@ export const listSpendableNotes = query({
     return {
       walletAddress: wallet.address,
       notes: notes
-        .filter((n) => n.sealed.ephemeral !== "faucet")
         .map((n) => ({
           _id: n._id,
           commitment: n.commitment,

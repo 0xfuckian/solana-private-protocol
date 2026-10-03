@@ -1,7 +1,7 @@
 /**
  * Solana settlement scaffold — mainnet wiring point, NOT live.
  *
- * The Convex simulation stays the source of truth until:
+ * The Convex ledger stays the source of truth until:
  *  - the Anchor verifier program deploys (program ID below),
  *  - the join-split circuit completes review + ceremony,
  *  - RPC settlement replaces `convex dev` envelopes.

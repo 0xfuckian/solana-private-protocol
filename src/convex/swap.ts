@@ -1,5 +1,5 @@
 import { sealedStatement } from "../lib/spend";
-import { consumeSpend, spendArgs } from "./spend";
+import { consumeSpend, requireVerifiedProof, spendArgs } from "./spend";
 import { appendNote } from "./merkle";
 import { assertNullifiers, assertSealedNote, assertUnits } from "../lib/safety";
 import { v } from "convex/values";
@@ -13,7 +13,6 @@ import {
   requireUserId,
   routeFee,
 } from "./backendHelpers";
-import { sha256Hex } from "./sha256";
 import {
   MIN_SWAP_LAMPORTS,
   MIN_SWAP_TOKENS,
@@ -65,28 +64,9 @@ export const listSwaps = query({
   },
 });
 
-/**
- * Devnet simulation control: seed the AMM reserves. On mainnet the pool is
- * seeded from protocol liquidity plus LP deposits; here it is a one-click
- * fixture sized so the mid price lands on the open mint rate
- * (350 lamports per token), keeping every page coherent.
- */
-export const seedReserves = mutation({
-  args: {},
-  handler: async (ctx) => {
-    await requireUserId(ctx);
-    const state = await ensureProtocolState(ctx);
-    if ((state.swapSolReserve ?? 0) > 0 && (state.swapTokenReserve ?? 0) > 0) {
-      return { seeded: false };
-    }
-    await ctx.db.patch(state._id, {
-      // 35 SOL ↔ 10,000,000 SOLZK → 350 lamports/token, the open mint rate.
-      swapSolReserve: 3_500_000_000,
-      swapTokenReserve: 10_000_000,
-    });
-    return { seeded: true };
-  },
-});
+// The AMM reserves are not seeded by hand. They are funded from real protocol
+// liquidity (the 95% mint reserve) and LP deposits, so a fresh pool is empty
+// until genuine value flows in.
 
 /**
  * Swap SOL → SOLZK. The SOL leg leaves your ordinary wallet and joins the
@@ -146,10 +126,7 @@ export const swapSolForTokens = mutation({
     // The proof commits to the SOL leg and the sealed output note — the
     // shielded leg cannot be altered in transit.
     const statement = `swap-sol:${wallet.address}:${solLamportsIn}:${minTokensOut}:${expectedTokensOut}:${commitment}:${sealedStatement(sealedNote)}`;
-    const expected = sha256Hex(sha256Hex(statement) + "solzk-circuit-v1");
-    if (expected !== proof) {
-      throw new Error("Proof rejected: it does not commit to these bytes.");
-    }
+    await requireVerifiedProof(ctx, statement, proof);
 
     // Fee routing and reserve accounting: the fee leaves the pool to
     // vault + treasury, the net SOL joins the reserves.

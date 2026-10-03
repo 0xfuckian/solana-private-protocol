@@ -6,7 +6,7 @@ rate (0.035 SOL per 10k lot) with no approval loop. Burn tiers
 
 ## What agents can call
 
-Read-only Convex queries in `src/convex/termix.ts` (all `simulation: true`):
+Read-only Convex queries in `src/convex/termix.ts` (each returns `source: "convex-ledger"`):
 
 - `termix.poolState` — roots, supply, fee bps, swap reserves, vault, assets.
 - `termix.agentReputation({ address })` — on-ledger facts only (payroll
@@ -73,7 +73,7 @@ the user's key and returns a proof. The server has no reason to see the key.
 
 - Do not treat pay links as escrow, ASP labels as compliance, or
   reputation facts as credit. Acceptance stays with the hiring agent.
-- This is a devnet simulation: no real settlement, no audited proofs.
+- No real settlement and no audited proofs yet; reads are from the Convex ledger.
   Do not move real funds or confidential payroll through it.
 
 ## Example: private payment request flow

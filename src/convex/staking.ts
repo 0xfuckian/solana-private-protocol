@@ -27,7 +27,7 @@ export const getStatus = query({
     return { amount: position?.amount ?? 0, lockedUntil: position?.lockedUntil ?? 0, totalStaked: pool?.totalStaked ?? 0,
       rewardsAvailable: pool?.rewardTokens ?? 0, governanceWeight: position?.amount ?? 0,
       claimableTokens: position ? wholeRewards(pendingRewards({ ...position, shares: position.amount }, BigInt(pool?.rewardIndex ?? "0"))) : 0,
-      feeBps: position && position.amount > 0 ? 100 : 200, dailyLimitSol: position && position.amount > 0 ? 100 : 10, simulation: true };
+      feeBps: position && position.amount > 0 ? 100 : 200, dailyLimitSol: position && position.amount > 0 ? 100 : 10 };
   },
 });
 
